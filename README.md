@@ -51,14 +51,14 @@ cd flight-rebook-mvp
 python3 app.py            # then open http://localhost:8000
 ```
 
-Out of the box it runs on a seeded fixture dataset: offline, deterministic, no keys. To make it real, drop in your own credentials (both files are git-ignored and never leave your machine):
+Out of the box it runs on a seeded fixture dataset: offline, deterministic, no keys. The fixtures shift onto the day you run them, so the demo works whatever date you clone it, and the four sample cancellations ship with their parsed fields, so they run with no OpenAI key either. To make it real, drop in your own credentials (both files are git-ignored and never leave your machine):
 
 - **Live flights:** put a Duffel access token in `duffel_token.txt`. Free self-serve signup at duffel.com. Searching is free; you only pay if you book, which this app does not do.
 - **Paste-to-parse:** put an OpenAI API key in `openai_key.txt`. Uses `gpt-5.4-nano`, a fraction of a cent per parse.
 
 The keys stay server-side. Your browser only ever talks to your own local server.
 
-Tests: `python3 -m unittest` (10 tests over the search and refund logic).
+Tests: `python3 -m unittest` (18 tests over the search, the fixture clock, and the refund logic).
 
 ---
 

@@ -156,6 +156,20 @@ class Disruption:
     itinerary_type: str             # "domestic" | "international"
     passengers: List[Passenger]
     airline_offer: Optional[Option] = None
+    # What actually happened, as stated by the airline: "cancelled", "delayed",
+    # "changed", or "" when the message never said. Empty means unknown - the
+    # refund rules key off a real cancellation, so we never assume one.
+    disruption_type: str = ""
+
+    @property
+    def is_cancellation(self) -> bool:
+        return self.disruption_type == "cancelled"
+
+    @property
+    def fare_known(self) -> bool:
+        """False when nobody told us what the ticket cost - a zero total is
+        'we don't know', not 'you paid nothing'."""
+        return any(p.fare_paid for p in self.passengers)
 
     @property
     def party_size(self) -> int:
