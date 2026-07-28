@@ -1,0 +1,66 @@
+{
+  "generated_for": "2026-07-28 Bay Area -> New York, weather cancellation demo",
+  "airports": [
+    {"code": "SFO", "name": "San Francisco Intl", "metro": "BAY", "utc_offset_minutes": -420},
+    {"code": "SJC", "name": "San Jose Mineta", "metro": "BAY", "utc_offset_minutes": -420},
+    {"code": "OAK", "name": "Oakland Intl", "metro": "BAY", "utc_offset_minutes": -420},
+    {"code": "JFK", "name": "New York JFK", "metro": "NYC", "utc_offset_minutes": -240},
+    {"code": "EWR", "name": "Newark Liberty", "metro": "NYC", "utc_offset_minutes": -240},
+    {"code": "LGA", "name": "New York LaGuardia", "metro": "NYC", "utc_offset_minutes": -240},
+    {"code": "PHX", "name": "Phoenix Sky Harbor", "metro": "PHX", "utc_offset_minutes": -420},
+    {"code": "DEN", "name": "Denver Intl", "metro": "DEN", "utc_offset_minutes": -360},
+    {"code": "LAS", "name": "Las Vegas Harry Reid", "metro": "LAS", "utc_offset_minutes": -420},
+    {"code": "SEA", "name": "Seattle-Tacoma", "metro": "SEA", "utc_offset_minutes": -420},
+    {"code": "ORD", "name": "Chicago O'Hare", "metro": "CHI", "utc_offset_minutes": -300}
+  ],
+  "metros": {
+    "BAY": {"name": "San Francisco Bay Area", "airports": ["SFO", "SJC", "OAK"]},
+    "NYC": {"name": "New York City", "airports": ["JFK", "EWR", "LGA"]}
+  },
+  "ground_minutes": {
+    "from_traveller": {"SJC": 15, "SFO": 55, "OAK": 50},
+    "to_final_destination": {"JFK": 55, "EWR": 45, "LGA": 35}
+  },
+  "carriers": {
+    "AA": "American", "UA": "United", "DL": "Delta", "B6": "JetBlue",
+    "WN": "Southwest", "AS": "Alaska"
+  },
+  "segments": [
+    {"carrier": "AA", "number": "1642", "origin": "SJC", "destination": "PHX", "depart_local": "2026-07-28T16:25", "arrive_local": "2026-07-28T18:05", "seats_available": 9, "fare_per_person": 141.0, "aircraft": "A320"},
+    {"carrier": "AA", "number": "2411", "origin": "PHX", "destination": "JFK", "depart_local": "2026-07-28T21:35", "arrive_local": "2026-07-29T05:47", "seats_available": 9, "fare_per_person": 232.0, "aircraft": "A321"},
+    {"carrier": "AA", "number": "512", "origin": "SJC", "destination": "PHX", "depart_local": "2026-07-28T12:41", "arrive_local": "2026-07-28T14:22", "seats_available": 6, "fare_per_person": 141.0, "aircraft": "A319"},
+    {"carrier": "AA", "number": "1188", "origin": "PHX", "destination": "EWR", "depart_local": "2026-07-28T16:20", "arrive_local": "2026-07-28T23:59", "seats_available": 2, "fare_per_person": 218.0, "aircraft": "A321"},
+    {"carrier": "AA", "number": "178", "origin": "SFO", "destination": "JFK", "depart_local": "2026-07-28T22:10", "arrive_local": "2026-07-29T06:40", "seats_available": 6, "fare_per_person": 305.0, "aircraft": "A321T"},
+    {"carrier": "B6", "number": "916", "origin": "SFO", "destination": "JFK", "depart_local": "2026-07-28T13:20", "arrive_local": "2026-07-28T21:55", "seats_available": 5, "fare_per_person": 412.0, "aircraft": "A321"},
+    {"carrier": "B6", "number": "1078", "origin": "OAK", "destination": "JFK", "depart_local": "2026-07-28T14:40", "arrive_local": "2026-07-28T23:12", "seats_available": 4, "fare_per_person": 389.0, "aircraft": "A320"},
+    {"carrier": "UA", "number": "512", "origin": "SFO", "destination": "EWR", "depart_local": "2026-07-28T14:05", "arrive_local": "2026-07-28T22:35", "seats_available": 9, "fare_per_person": 538.0, "aircraft": "B763"},
+    {"carrier": "UA", "number": "1704", "origin": "SJC", "destination": "EWR", "depart_local": "2026-07-28T13:55", "arrive_local": "2026-07-28T22:24", "seats_available": 3, "fare_per_person": 565.0, "aircraft": "B738"},
+    {"carrier": "DL", "number": "1290", "origin": "SFO", "destination": "JFK", "depart_local": "2026-07-28T13:45", "arrive_local": "2026-07-28T22:20", "seats_available": 2, "fare_per_person": 498.0, "aircraft": "B739"},
+    {"carrier": "AS", "number": "620", "origin": "SFO", "destination": "JFK", "depart_local": "2026-07-28T16:00", "arrive_local": "2026-07-29T00:35", "seats_available": 7, "fare_per_person": 355.0, "aircraft": "B739"},
+    {"carrier": "UA", "number": "2237", "origin": "SFO", "destination": "DEN", "depart_local": "2026-07-28T12:15", "arrive_local": "2026-07-28T15:50", "seats_available": 8, "fare_per_person": 168.0, "aircraft": "B739"},
+    {"carrier": "UA", "number": "1466", "origin": "DEN", "destination": "JFK", "depart_local": "2026-07-28T16:55", "arrive_local": "2026-07-28T22:48", "seats_available": 5, "fare_per_person": 231.0, "aircraft": "B738"},
+    {"carrier": "WN", "number": "2211", "origin": "OAK", "destination": "LAS", "depart_local": "2026-07-28T11:45", "arrive_local": "2026-07-28T13:10", "seats_available": 12, "fare_per_person": 118.0, "aircraft": "B737"},
+    {"carrier": "WN", "number": "1855", "origin": "LAS", "destination": "LGA", "depart_local": "2026-07-28T14:35", "arrive_local": "2026-07-28T22:20", "seats_available": 8, "fare_per_person": 196.0, "aircraft": "B738"},
+    {"carrier": "AS", "number": "1201", "origin": "SFO", "destination": "SEA", "depart_local": "2026-07-28T11:30", "arrive_local": "2026-07-28T13:40", "seats_available": 10, "fare_per_person": 99.0, "aircraft": "B739"},
+    {"carrier": "B6", "number": "664", "origin": "SEA", "destination": "JFK", "depart_local": "2026-07-28T15:25", "arrive_local": "2026-07-28T23:52", "seats_available": 6, "fare_per_person": 189.0, "aircraft": "A321"},
+    {"carrier": "UA", "number": "884", "origin": "SJC", "destination": "ORD", "depart_local": "2026-07-28T13:10", "arrive_local": "2026-07-28T19:20", "seats_available": 6, "fare_per_person": 205.0, "aircraft": "B739"},
+    {"carrier": "UA", "number": "1902", "origin": "ORD", "destination": "LGA", "depart_local": "2026-07-28T18:40", "arrive_local": "2026-07-28T21:55", "seats_available": 9, "fare_per_person": 174.0, "aircraft": "A319"},
+    {"carrier": "UA", "number": "2044", "origin": "ORD", "destination": "LGA", "depart_local": "2026-07-28T20:35", "arrive_local": "2026-07-28T23:50", "seats_available": 4, "fare_per_person": 174.0, "aircraft": "A319"}
+  ],
+  "disruption": {
+    "original_flight": "AA16",
+    "original_origin": "SFO",
+    "original_destination": "JFK",
+    "original_depart_local": "2026-07-28T13:30",
+    "original_arrive_local": "2026-07-28T22:05",
+    "cause": "weather",
+    "itinerary_type": "domestic",
+    "passengers": [
+      {"name": "Passenger 1", "pnr": "KQ7T2R", "fare_paid": 384.0},
+      {"name": "Passenger 2", "pnr": "KQ7T2R", "fare_paid": 384.0},
+      {"name": "Passenger 3", "pnr": "MW9J4L", "fare_paid": 402.0},
+      {"name": "Passenger 4", "pnr": "PB3X8D", "fare_paid": 402.0}
+    ],
+    "airline_offer": ["AA1642", "AA2411"]
+  }
+}

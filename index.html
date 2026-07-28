@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rebook - find the flight the airline won't offer you</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Rebook</h1>
+  <p class="tag">Your flight got cancelled. The airline can only rebook you on its own metal, out of the airport on your ticket. This looks at every airport in both metro areas, every carrier in the data, and checks that seats exist for your whole party.</p>
+</header>
+
+<main>
+  <section id="scenario" class="panel">
+    <h2>What happened</h2>
+    <div id="scenario-body" class="loading">loading...</div>
+  </section>
+
+  <section class="panel">
+    <h2>Search</h2>
+    <form id="search-form">
+      <label>From <input name="origin" value="SJC" size="6"></label>
+      <label>To <input name="destination" value="NYC" size="6"></label>
+      <label>Passengers <input name="party_size" type="number" min="1" max="9" value="4"></label>
+      <label>Depart after <input name="depart_after_local" value="2026-07-28T11:00" size="18"></label>
+      <label class="check"><input name="include_self_connections" type="checkbox" checked> allow separate-ticket connections</label>
+      <button type="submit">Find better options</button>
+    </form>
+    <p class="hint" id="searched"></p>
+  </section>
+
+  <section id="results"></section>
+  <section id="collapsed"></section>
+</main>
+
+<footer>
+  <p id="source-note"></p>
+  <p>Refund logic follows <a href="https://www.law.cornell.edu/cfr/text/14/260.6" target="_blank" rel="noreferrer">14 CFR 260.6</a> (US DOT automatic refund rule). Not legal advice.</p>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
