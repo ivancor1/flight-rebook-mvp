@@ -47,13 +47,12 @@ document.addEventListener("error", (ev) => {
 }, true);
 
 let PARSED = null;   // fields from the last "Read it", or null (fixture demo)
-let PARTY = 4;       // current party size, for card labels
+let PARTY = 1;       // party size the last search actually ran at, for card labels
 
 // --- the "What happened" panel, from the fixture or the user's own paste ---
 const WHAT_HAPPENED = { cancelled: "was cancelled", delayed: "was delayed", changed: "was changed" };
 
 function renderScenario(d, offer, e) {
-  PARTY = d.party_size || PARTY;
   const paid = d.total_paid ? `, ${money(d.total_paid)} paid in total` : "";
   const pnrs = d.pnrs && d.pnrs.length ? ` across ${d.pnrs.length} record locator(s) (${esc(d.pnrs.join(", "))})` : "";
   const offerHtml = offer ? `
@@ -219,6 +218,11 @@ async function search(ev) {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   })).json();
   if (r.error) { $("#results").innerHTML = `<p class="searched">Error: ${esc(r.error)}</p>`; return; }
+
+  // The card labels ("confirmed for all N") have to say the number the search
+  // actually ran at - which is the form's, not the fixture demo's. Set it from
+  // the response before anything renders; the scenario panel doesn't always run.
+  PARTY = Number(r.query && r.query.party_size) || Number(body.party_size) || 1;
 
   if (r.data_source) $("#source-note").textContent = `Data source: ${r.data_source.name}. ${r.data_source.note}`;
   if (r.disruption) {
