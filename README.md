@@ -83,7 +83,7 @@ Swapping the data source is one file: the engine never talks to an API, it asks 
 
 ## Honest limits
 
-- **Southwest** is not on any self-serve API and is not shown. The right answer is a deep-link handoff to southwest.com, not faked inventory.
+- **Southwest** is not on any self-serve API and is not shown - not in the live source, and not in the fixtures either, because seeding a Southwest fare into the demo is exactly the faked inventory this line is promising not to do. The right answer is a deep-link handoff to southwest.com, which is not built yet.
 - **Coverage** is currently the SF Bay Area to New York corridor (that is the metro reference data). Extending it is a matter of adding metro definitions.
 - Rebook **finds and compares, it does not book.** It hands you to the airline to complete the purchase, which keeps it clear of ticket-agent and seller-of-travel obligations.
 - Availability shown is live purchase inventory: the best proxy for what the airline's own rebook tool would offer, not a read of your existing reservation, and not a guarantee.
