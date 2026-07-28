@@ -59,7 +59,9 @@ OPENAI_KEY = openai_key()
 
 SOURCE = make_source()
 ENGINE = Engine(SOURCE)
-DISRUPTION = SOURCE.disruption()
+# The canned cancellation belongs to the offline demo. A live source doesn't have
+# one, and None here means "no demo scenario", not "no disruption".
+DISRUPTION = SOURCE.disruption() if hasattr(SOURCE, "disruption") else None
 
 
 # --- turning parsed/entered fields into a real Disruption ----------------
@@ -126,7 +128,7 @@ def build_disruption(d, engine):
     if not d:
         return None
     try:
-        party = int(d.get("party_size") or DISRUPTION.party_size)
+        party = int(d.get("party_size") or (DISRUPTION.party_size if DISRUPTION else 1))
         dtype = str(d.get("disruption_type") or "").strip().lower()
         if dtype not in ("cancelled", "delayed", "changed"):
             dtype = ""  # never assume a cancellation we weren't told about
@@ -154,7 +156,7 @@ def build_disruption(d, engine):
             airline_offer=build_airline_offer(d.get("airline_rebooking"), d, engine),
         )
     except Exception as exc:
-        print(f"disruption build failed ({exc}); using fixture demo.")
+        print(f"disruption build failed ({exc}); falling back to the demo scenario.")
         return DISRUPTION
 
 # The fixture scenario is frozen at one moment: standing at SJC just after the
@@ -171,12 +173,17 @@ def scenario_now_utc() -> datetime:
 
 
 def scenario_payload() -> dict:
-    offer = DISRUPTION.airline_offer
-    return {
+    base = {
         "now_local": SCENARIO_NOW_LOCAL,
         "now_airport": SCENARIO_TZ_AIRPORT,
         "uses_demo_clock": getattr(SOURCE, "uses_demo_clock", False),
         "data_source": {"name": SOURCE.name, "note": SOURCE.coverage_note},
+    }
+    if DISRUPTION is None:      # live source: real clock, no canned scenario
+        return {**base, "disruption": None, "airline_offer": None, "entitlement": None}
+    offer = DISRUPTION.airline_offer
+    return {
+        **base,
         "disruption": {
             "original_flight": DISRUPTION.original_flight,
             "origin": DISRUPTION.original_origin,

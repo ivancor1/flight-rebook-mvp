@@ -58,7 +58,7 @@ Out of the box it runs on a seeded fixture dataset: offline, deterministic, no k
 
 The keys stay server-side. Your browser only ever talks to your own local server.
 
-Tests: `python3 -m unittest` (23 tests over the search, the fixture clock, and the refund logic).
+Tests: `python3 -m unittest` (26 tests over the search, the fixture clock, and the refund logic).
 
 ---
 
@@ -69,7 +69,7 @@ Deliberately dependency-free: a standard-library Python server, a vanilla single
 | File | What it does |
 | --- | --- |
 | `engine.py` | Metro expansion, connection building, per-leg party-size filter, door-to-door ranking |
-| `sources.py` | The `FlightSource` seam. `FixtureSource` (offline) and `DuffelSource` (live, with the party-of-1 diff) |
+| `sources.py` | `ReferenceData` (airports, metros, ground times) plus the `FlightSource` seam: `FixtureSource` (offline, owns the demo scenario) and `DuffelSource` (live, with the party-of-1 diff) |
 | `entitlement.py` | US DOT refund entitlement and the refund-vs-rebook comparison, with citations inline |
 | `parse.py` | Language-model extraction of a disruption from free text (OpenAI, `gpt-5.4-nano`) |
 | `app.py` | Standard-library HTTP server and JSON API |

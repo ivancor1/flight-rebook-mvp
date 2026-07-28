@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 
 import app as api
 
-from sources import FixtureSource
+from sources import DuffelSource, FixtureSource, ReferenceData
 from engine import Engine
 from entitlement import refund_entitlement, compare, significant_change
 from models import Disruption, Option, Passenger, Segment
@@ -225,6 +225,28 @@ class TestEntitlement(unittest.TestCase):
         c = compare(r["options"][0], dis, offer, self.eng)
         self.assertEqual(c["net_out_of_pocket"], c["new_ticket_total"])
         self.assertNotIn("after the refund", c["verdict"])
+
+
+class TestSourceSeam(unittest.TestCase):
+    """Reference data is config; the demo cancellation is not."""
+
+    def test_live_source_has_no_demo_scenario(self):
+        live = DuffelSource("test-token")          # no network call in __init__
+        self.assertFalse(hasattr(live, "disruption"),
+                         "a live source must not carry the fixture demo cancellation")
+        self.assertFalse(live.uses_demo_clock)
+        self.assertEqual(live.segments(), [])      # itineraries come from built_options
+
+    def test_live_source_still_gets_the_reference_data(self):
+        live = DuffelSource("test-token")
+        fixture = fixtures()
+        self.assertEqual(set(live.airports()), set(fixture.airports()))
+        self.assertEqual(live.metros(), fixture.metros())
+        self.assertEqual(live.ground_minutes(), fixture.ground_minutes())
+
+    def test_live_source_runs_on_the_wall_clock(self):
+        self.assertEqual(DuffelSource("test-token").now_local()[:10],
+                         datetime.now().strftime("%Y-%m-%d"))
 
 
 class TestRequestIsolation(unittest.TestCase):
