@@ -163,7 +163,8 @@ function optionCard(o, best) {
   const chips = [];
   chips.push(`<span class="chip ground">leave by ${clock(o.leave_by_local)}</span>`);
   chips.push(`<span class="chip ground">door to door ${dur(o.door_to_door_minutes)}</span>`);
-  if (!o.rejected_reason) chips.push(`<span class="chip win">confirmed for all ${PARTY}</span>`);
+  if (!o.rejected_reason)
+    chips.push(`<span class="chip win">${PARTY === 1 ? "seat confirmed" : `confirmed for all ${esc(PARTY)}`}</span>`);
   if (o.minutes_earlier_than_offer > 0)
     chips.push(`<span class="chip win">${(o.minutes_earlier_than_offer / 60).toFixed(1)}h earlier than the airline</span>`);
   if (o.different_airport_than_ticketed)
