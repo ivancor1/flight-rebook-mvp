@@ -94,6 +94,10 @@ Swapping the data source is one file: the engine never talks to an API, it asks 
 
 ---
 
+## Licence
+
+MIT - see [LICENSE](LICENSE).
+
 ## Legal
 
 The refund logic follows [14 CFR 260.6](https://www.law.cornell.edu/cfr/text/14/260.6) (US DOT automatic refund rule), with the citations inline in `entitlement.py`. This is not legal advice. It applies to flights to, from, or within the United States.
