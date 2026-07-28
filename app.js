@@ -1,5 +1,13 @@
 const $ = (s) => document.querySelector(s);
 
+// Everything on this page is built as an HTML string, and almost none of it is
+// ours: carrier names and logo URLs come from the live inventory feed, the
+// rejected/verdict strings are built server-side, and the disruption fields come
+// out of a language model reading whatever the airline (or the user) pasted in.
+// So every interpolation of a value we did not write goes through esc().
+const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+const esc = (v) => (v === null || v === undefined) ? "" : String(v).replace(/[&<>"']/g, (c) => ESCAPES[c]);
+
 const clock = (iso) => {
   if (!iso || !iso.includes("T")) return "-";
   let [hh, mm] = iso.split("T")[1].split(":").map(Number);
@@ -21,10 +29,22 @@ const money = (n) => {
   return `${s}$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
-window.logoFallback = (img, code) => { img.outerHTML = `<div class="logo mono">${code || "✈"}</div>`; };
-const carrierLogo = (seg) => seg && seg.logo
-  ? `<img class="logo" src="${seg.logo}" alt="" referrerpolicy="no-referrer" onerror="logoFallback(this,'${seg.carrier}')">`
-  : `<div class="logo mono">${(seg && seg.carrier) || "✈"}</div>`;
+const httpUrl = (u) => (typeof u === "string" && /^https?:\/\//i.test(u)) ? u : "";
+const carrierLogo = (seg) => (seg && httpUrl(seg.logo))
+  ? `<img class="logo" src="${esc(httpUrl(seg.logo))}" alt="" referrerpolicy="no-referrer" data-carrier="${esc(seg.carrier)}">`
+  : `<div class="logo mono">${esc((seg && seg.carrier) || "✈")}</div>`;
+
+// A broken logo URL falls back to the carrier code. Image error events don't
+// bubble, so listen in the capture phase - this replaces an inline onerror=""
+// attribute that interpolated the carrier code straight into markup.
+document.addEventListener("error", (ev) => {
+  const img = ev.target;
+  if (!(img instanceof HTMLImageElement) || !img.classList.contains("logo")) return;
+  const badge = document.createElement("div");
+  badge.className = "logo mono";
+  badge.textContent = img.dataset.carrier || "✈";
+  img.replaceWith(badge);
+}, true);
 
 let PARSED = null;   // fields from the last "Read it", or null (fixture demo)
 let PARTY = 4;       // current party size, for card labels
@@ -35,31 +55,31 @@ const WHAT_HAPPENED = { cancelled: "was cancelled", delayed: "was delayed", chan
 function renderScenario(d, offer, e) {
   PARTY = d.party_size || PARTY;
   const paid = d.total_paid ? `, ${money(d.total_paid)} paid in total` : "";
-  const pnrs = d.pnrs && d.pnrs.length ? ` across ${d.pnrs.length} record locator(s) (${d.pnrs.join(", ")})` : "";
+  const pnrs = d.pnrs && d.pnrs.length ? ` across ${d.pnrs.length} record locator(s) (${esc(d.pnrs.join(", "))})` : "";
   const offerHtml = offer ? `
     <div class="offer-card">
       <div class="row">
         <div><b>What the airline put you on</b>
-          <div class="muted">${offer.segments.map((s) => `${s.carrier}${s.number} ${s.origin}-${s.destination}`).join("  →  ")}</div>
+          <div class="muted">${offer.segments.map((s) => esc(`${s.carrier}${s.number} ${s.origin}-${s.destination}`)).join("  →  ")}</div>
         </div>
         <div class="lands"><span>lands</span><b>${clock(offer.arrive_local)}${dayOffset(offer.depart_local, offer.arrive_local) ? " +" + dayOffset(offer.depart_local, offer.arrive_local) : ""}</b></div>
       </div>
     </div>` : `<p class="muted">The airline hasn't offered you a replacement (or the message didn't say). Everything below is what you could take instead.</p>`;
   let refundHtml;
   if (e && e.refund_state === "known") {
-    refundHtml = `<div class="refund">You're owed <b>${money(e.refund_amount)}</b> back if you decline the rebooking and any voucher. ${e.prompt_refund}</div>`;
+    refundHtml = `<div class="refund">You're owed <b>${money(e.refund_amount)}</b> back if you decline the rebooking and any voucher. ${esc(e.prompt_refund)}</div>`;
   } else if (e && e.refund_state === "unknown") {
-    refundHtml = `<div class="refund">You're owed a full refund of what you paid if you decline the rebooking and any voucher. Enter the total above to see the amount. ${e.prompt_refund}</div>`;
+    refundHtml = `<div class="refund">You're owed a full refund of what you paid if you decline the rebooking and any voucher. Enter the total above to see the amount. ${esc(e.prompt_refund)}</div>`;
   } else if (e && e.refund_state === "conditional" && e.refund_if_cancelled != null) {
-    refundHtml = `<div class="refund">If it was cancelled - your message didn't say - you're owed <b>${money(e.refund_if_cancelled)}</b> back when you decline the rebooking and any voucher. ${e.prompt_refund}</div>`;
+    refundHtml = `<div class="refund">If it was cancelled - your message didn't say - you're owed <b>${money(e.refund_if_cancelled)}</b> back when you decline the rebooking and any voucher. ${esc(e.prompt_refund)}</div>`;
   } else if (e) {
-    refundHtml = `<p class="muted">${e.basis}</p>`;
+    refundHtml = `<p class="muted">${esc(e.basis)}</p>`;
   } else {
     refundHtml = `<p class="muted">Enter what you paid above to see the refund you're owed if you walk away.</p>`;
   }
   $("#scenario-body").className = "";
   $("#scenario-body").innerHTML = `
-    <p class="big"><b>${d.original_flight} ${d.origin || "?"}-${d.destination || "?"}</b> ${WHAT_HAPPENED[d.disruption_type] || "was disrupted"}${d.cause ? ` (${d.cause})` : ""}. Party of ${d.party_size}${pnrs}${paid}.</p>
+    <p class="big"><b>${esc(d.original_flight)} ${esc(d.origin || "?")}-${esc(d.destination || "?")}</b> ${WHAT_HAPPENED[d.disruption_type] || "was disrupted"}${d.cause ? ` (${esc(d.cause)})` : ""}. Party of ${esc(d.party_size)}${pnrs}${paid}.</p>
     ${offerHtml}${refundHtml}`;
 }
 
@@ -125,11 +145,11 @@ async function readMessage() {
 function optionCard(o, best) {
   const c = o.comparison || {};
   const seg0 = o.segments[0] || {};
-  const flightNums = o.segments.map((s) => `${s.carrier}${s.number}`).join(" · ");
+  const flightNums = o.segments.map((s) => esc(`${s.carrier}${s.number}`)).join(" · ");
   const span = o.door_to_door_minutes - o.ground_to_origin_minutes - 60 - o.ground_from_destination_minutes;
   const d1 = dayOffset(o.depart_local, o.arrive_local);
   const stops = o.segments.length > 1
-    ? `<span class="stops one">1 stop ${o.segments[0].destination}</span>`
+    ? `<span class="stops one">1 stop ${esc(o.segments[0].destination)}</span>`
     : `<span class="stops direct">Direct</span>`;
 
   const net = c.net_out_of_pocket;
@@ -148,27 +168,27 @@ function optionCard(o, best) {
   if (o.minutes_earlier_than_offer > 0)
     chips.push(`<span class="chip win">${(o.minutes_earlier_than_offer / 60).toFixed(1)}h earlier than the airline</span>`);
   if (o.different_airport_than_ticketed)
-    chips.push(`<span class="chip">${o.origin}→${o.destination}, not your ticketed airports</span>`);
+    chips.push(`<span class="chip">${esc(o.origin)}→${esc(o.destination)}, not your ticketed airports</span>`);
   if (o.self_connection) chips.push(`<span class="chip warn">separate tickets, bags not through-checked</span>`);
-  if (o.rejected_reason) chips.push(`<span class="chip bad">${o.rejected_reason}</span>`);
+  if (o.rejected_reason) chips.push(`<span class="chip bad">${esc(o.rejected_reason)}</span>`);
 
   return `<div class="fcard ${best ? "best" : ""} ${o.rejected_reason ? "dead" : ""}">
     ${best ? '<div class="best-tag">BEST · LANDS SOONEST</div>' : ""}
     <div class="fmain">
-      <div class="fcarrier">${carrierLogo(seg0)}<div class="cn"><b>${seg0.carrier_name || seg0.carrier || "Flight"}</b><small>${flightNums}</small></div></div>
+      <div class="fcarrier">${carrierLogo(seg0)}<div class="cn"><b>${esc(seg0.carrier_name || seg0.carrier || "Flight")}</b><small>${flightNums}</small></div></div>
       <div class="ftimes">
-        <div class="t"><b>${clock(o.depart_local)}</b><span>${o.origin}</span></div>
+        <div class="t"><b>${clock(o.depart_local)}</b><span>${esc(o.origin)}</span></div>
         <div class="fmid">
           <div class="dur">${dur(span)}</div>
           <div class="track">${o.segments.length > 1 ? '<span class="dot"></span>' : ""}</div>
           ${stops}
         </div>
-        <div class="t"><b>${clock(o.arrive_local)}${d1 ? `<sup>+${d1}</sup>` : ""}</b><span>${o.destination}</span></div>
+        <div class="t"><b>${clock(o.arrive_local)}${d1 ? `<sup>+${d1}</sup>` : ""}</b><span>${esc(o.destination)}</span></div>
       </div>
       <div class="fprice"><b>${dollars(o.price_per_person)}</b><span>per person</span>${netPill}</div>
     </div>
     <div class="fmeta">${chips.join("")}</div>
-    ${(!o.rejected_reason && c.verdict) ? `<p class="verdict ${c.hours_earlier_than_airline_offer > 0 ? "" : "flat"}">${c.verdict}</p>` : ""}
+    ${(!o.rejected_reason && c.verdict) ? `<p class="verdict ${c.hours_earlier_than_airline_offer > 0 ? "" : "flat"}">${esc(c.verdict)}</p>` : ""}
   </div>`;
 }
 
@@ -198,7 +218,7 @@ async function search(ev) {
   const r = await (await fetch("/api/search", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   })).json();
-  if (r.error) { $("#results").innerHTML = `<p class="searched">Error: ${r.error}</p>`; return; }
+  if (r.error) { $("#results").innerHTML = `<p class="searched">Error: ${esc(r.error)}</p>`; return; }
 
   if (r.data_source) $("#source-note").textContent = `Data source: ${r.data_source.name}. ${r.data_source.note}`;
   if (r.disruption) {
@@ -211,15 +231,15 @@ async function search(ev) {
     `Searched ${r.airports_searched.origins.join(", ")} → ${r.airports_searched.destinations.join(", ")} for ${r.query.party_size} passengers.`;
 
   const shown = r.options.length, total = r.total_options_found ?? shown;
-  const head = `<div class="results-head"><div class="count"><b>${total}</b> option${total === 1 ? "" : "s"} that fit all ${r.query.party_size}</div>${total > shown ? `<div class="sub">showing the ${shown} best by arrival</div>` : ""}</div>`;
+  const head = `<div class="results-head"><div class="count"><b>${esc(total)}</b> option${total === 1 ? "" : "s"} that fit all ${esc(r.query.party_size)}</div>${total > shown ? `<div class="sub">showing the ${esc(shown)} best by arrival</div>` : ""}</div>`;
   $("#results").innerHTML = head +
     (shown ? r.options.map((o, i) => optionCard(o, i === 0)).join("")
-           : `<p class="searched">Nothing bookable for all ${r.query.party_size} in this window.</p>`);
+           : `<p class="searched">Nothing bookable for all ${esc(r.query.party_size)} in this window.</p>`);
 
   const deadShown = r.collapsed_on_party_size.length, deadTotal = r.total_collapsed_found ?? deadShown;
   $("#collapsed").innerHTML = deadShown
-    ? `<div class="results-head"><div class="count">Died on party size${deadTotal > deadShown ? ` <span class="sub">(${deadTotal}, showing ${deadShown})</span>` : ""}</div></div>
-       <p class="searched">These come back when you search for one seat and vanish the moment you ask for all ${r.query.party_size} on one booking. Airlines sell seats in fare buckets. Live purchase inventory (the best proxy for the airline's own rebook tool), not a read of your reservation.</p>` +
+    ? `<div class="results-head"><div class="count">Died on party size${deadTotal > deadShown ? ` <span class="sub">(${esc(deadTotal)}, showing ${esc(deadShown)})</span>` : ""}</div></div>
+       <p class="searched">These come back when you search for one seat and vanish the moment you ask for all ${esc(r.query.party_size)} on one booking. Airlines sell seats in fare buckets. Live purchase inventory (the best proxy for the airline's own rebook tool), not a read of your reservation.</p>` +
       r.collapsed_on_party_size.map((o) => optionCard(o, false)).join("")
     : "";
 }
@@ -287,7 +307,7 @@ async function useExample(i) {
 
 function renderExamples() {
   const box = $("#examples");
-  box.innerHTML = EXAMPLES.map((e, i) => `<button type="button" class="ex-chip" data-i="${i}">${e.label}</button>`).join("");
+  box.innerHTML = EXAMPLES.map((e, i) => `<button type="button" class="ex-chip" data-i="${i}">${esc(e.label)}</button>`).join("");
   box.querySelectorAll(".ex-chip").forEach((btn) => btn.addEventListener("click", () => useExample(Number(btn.dataset.i))));
 }
 
