@@ -8,14 +8,23 @@ Dependency-free on purpose (urllib, not the openai SDK) so `python3 app.py`
 still runs with no pip install. Model: gpt-5.4-nano at low reasoning effort -
 the fastest, cheapest tier that reliably extracts the fields AND leaves the fare
 null when it isn't stated (it must never invent a refund basis).
+
+Model facts checked against the OpenAI docs on 2026-07-28
+(https://developers.openai.com/api/docs/models/gpt-5.4-nano): gpt-5.4-nano is
+current, snapshot gpt-5.4-nano-2026-03-17, supported on v1/chat/completions,
+reasoning effort accepts none/low/medium/high/xhigh, and it does structured
+outputs. Roughly $0.20 per 1M input tokens, so a parse costs a fraction of a
+cent. Set OPENAI_MODEL to point at a different model; if that model's endpoint
+rejects reasoning_effort, the call retries once without it.
 """
 import json
+import os
 import time
 import urllib.error
 import urllib.request
 
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
-MODEL = "gpt-5.4-nano"
+MODEL = os.environ.get("OPENAI_MODEL", "").strip() or "gpt-5.4-nano"
 
 SYSTEM = (
     "You extract structured data from an airline flight-disruption message "
@@ -50,7 +59,7 @@ def parse_disruption(text: str, key: str, model: str = MODEL, today: str = None)
     if today:
         system += (f" Today's date is {today}. Resolve relative words like 'today', 'tonight', "
                    f"'this morning', and 'tomorrow' to absolute YYYY-MM-DD dates.")
-    body = json.dumps({
+    payload = {
         "model": model,
         "messages": [
             {"role": "system", "content": system},
@@ -58,19 +67,29 @@ def parse_disruption(text: str, key: str, model: str = MODEL, today: str = None)
         ],
         "response_format": {"type": "json_object"},
         "reasoning_effort": "low",
-    }).encode()
-    req = urllib.request.Request(OPENAI_URL, data=body, method="POST", headers={
-        "Authorization": f"Bearer {key.strip()}",
-        "Content-Type": "application/json",
-    })
-    for attempt in range(3):
+    }
+
+    def request():
+        return urllib.request.Request(OPENAI_URL, data=json.dumps(payload).encode(),
+                                      method="POST", headers={
+            "Authorization": f"Bearer {key.strip()}",
+            "Content-Type": "application/json",
+        })
+
+    for attempt in range(4):
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
+            with urllib.request.urlopen(request(), timeout=60) as resp:
                 data = json.loads(resp.read())
             return json.loads(data["choices"][0]["message"]["content"])
         except urllib.error.HTTPError as exc:
-            if exc.code in (429, 500, 502, 503) and attempt < 2:
+            detail = exc.read().decode()[:300]
+            # A model that doesn't take reasoning_effort on this endpoint (anything
+            # set through OPENAI_MODEL) shouldn't cost you the parse.
+            if exc.code == 400 and "reasoning_effort" in detail and "reasoning_effort" in payload:
+                payload.pop("reasoning_effort")
+                continue
+            if exc.code in (429, 500, 502, 503) and attempt < 3:
                 time.sleep(2.0 ** attempt)
                 continue
-            raise RuntimeError(f"OpenAI {exc.code}: {exc.read().decode()[:300]}")
+            raise RuntimeError(f"OpenAI {exc.code}: {detail}")
     return {}
