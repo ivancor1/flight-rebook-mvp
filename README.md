@@ -2,6 +2,10 @@
 
 **Find the flight the airline won't offer you.**
 
+[![tests](https://github.com/ivancor1/flight-rebook-mvp/actions/workflows/tests.yml/badge.svg)](https://github.com/ivancor1/flight-rebook-mvp/actions/workflows/tests.yml)
+
+![Rebook: a cancelled SFO-JFK flight for a party of four, the refund owed, and the alternatives ranked by when you actually land](docs/screenshot.png)
+
 When an airline cancels your flight, its rebooking desk is working for the airline, not for you. It only searches its own metal, only out of the airport printed on your ticket, and it does not care that four of you are travelling together on three different record locators. That is how a 1:30pm SFO to JFK turns into a 4:25pm out of San Jose, a connection in Phoenix, and a 5:47am arrival.
 
 Rebook does the search the airline won't: every airport in both metro areas, every carrier in live inventory, seats confirmed for your whole party on every leg, ranked by when you actually get to your door. Then it puts a dollar figure on the option the airline never mentions: take the cash refund you are owed and buy a ticket on someone else.
