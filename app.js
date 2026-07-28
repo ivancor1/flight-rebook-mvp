@@ -30,6 +30,8 @@ let PARSED = null;   // fields from the last "Read it", or null (fixture demo)
 let PARTY = 4;       // current party size, for card labels
 
 // --- the "What happened" panel, from the fixture or the user's own paste ---
+const WHAT_HAPPENED = { cancelled: "was cancelled", delayed: "was delayed", changed: "was changed" };
+
 function renderScenario(d, offer, e) {
   PARTY = d.party_size || PARTY;
   const paid = d.total_paid ? `, ${money(d.total_paid)} paid in total` : "";
@@ -43,18 +45,58 @@ function renderScenario(d, offer, e) {
         <div class="lands"><span>lands</span><b>${clock(offer.arrive_local)}${dayOffset(offer.depart_local, offer.arrive_local) ? " +" + dayOffset(offer.depart_local, offer.arrive_local) : ""}</b></div>
       </div>
     </div>` : `<p class="muted">The airline hasn't offered you a replacement (or the message didn't say). Everything below is what you could take instead.</p>`;
-  const refundHtml = e && e.entitled
-    ? `<div class="refund">You're owed <b>${money(e.refund_amount)}</b> back if you decline the rebooking and any voucher. ${e.prompt_refund}</div>`
-    : `<p class="muted">Enter what you paid above to see the refund you're owed if you walk away.</p>`;
+  let refundHtml;
+  if (e && e.refund_state === "known") {
+    refundHtml = `<div class="refund">You're owed <b>${money(e.refund_amount)}</b> back if you decline the rebooking and any voucher. ${e.prompt_refund}</div>`;
+  } else if (e && e.refund_state === "unknown") {
+    refundHtml = `<div class="refund">You're owed a full refund of what you paid if you decline the rebooking and any voucher. Enter the total above to see the amount. ${e.prompt_refund}</div>`;
+  } else if (e && e.refund_state === "conditional" && e.refund_if_cancelled != null) {
+    refundHtml = `<div class="refund">If it was cancelled - your message didn't say - you're owed <b>${money(e.refund_if_cancelled)}</b> back when you decline the rebooking and any voucher. ${e.prompt_refund}</div>`;
+  } else if (e) {
+    refundHtml = `<p class="muted">${e.basis}</p>`;
+  } else {
+    refundHtml = `<p class="muted">Enter what you paid above to see the refund you're owed if you walk away.</p>`;
+  }
   $("#scenario-body").className = "";
   $("#scenario-body").innerHTML = `
-    <p class="big"><b>${d.original_flight} ${d.origin || "?"}-${d.destination || "?"}</b> was cancelled${d.cause ? ` (${d.cause})` : ""}. Party of ${d.party_size}${pnrs}${paid}.</p>
+    <p class="big"><b>${d.original_flight} ${d.origin || "?"}-${d.destination || "?"}</b> ${WHAT_HAPPENED[d.disruption_type] || "was disrupted"}${d.cause ? ` (${d.cause})` : ""}. Party of ${d.party_size}${pnrs}${paid}.</p>
     ${offerHtml}${refundHtml}`;
 }
 
 function nowLocal() {
   const d = new Date(), p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// The date the search is anchored to: the offline demo runs on the scenario clock
+// the server hands back, a live source runs on your own clock.
+const searchDate = () => {
+  const v = $("#search-form").depart_after_local.value;
+  return (v && v.includes("T") ? v : nowLocal()).split("T")[0];
+};
+const at = (hhmm) => `${searchDate()}T${hhmm}`;
+
+// The fixtures are seeded for one scenario day and shifted onto today, so the
+// offline demo has to search from the scenario clock, not the wall clock -
+// otherwise every seeded flight is already in the past by dinner time.
+async function prefillDepartAfter() {
+  const f = $("#search-form");
+  f.depart_after_local.value = nowLocal();
+  try {
+    const s = await (await fetch("/api/scenario")).json();
+    if (s && s.uses_demo_clock && s.now_local) f.depart_after_local.value = s.now_local;
+  } catch (err) { /* wall clock is a fine fallback */ }
+}
+
+// Push parsed disruption fields into the form (from the model, or from a sample).
+function applyFields(fields) {
+  PARSED = fields;
+  const f = $("#search-form");
+  if (PARSED.original_origin) f.origin.value = PARSED.original_origin;
+  if (PARSED.original_destination || PARSED.wants_destination)
+    f.destination.value = PARSED.original_destination || PARSED.wants_destination;
+  if (PARSED.party_size) f.party_size.value = PARSED.party_size;
+  if (PARSED.total_paid) f.total_paid.value = PARSED.total_paid;
 }
 
 // --- the magic: paste the airline message, let the model fill it in ---
@@ -70,13 +112,7 @@ async function readMessage() {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
     })).json();
     if (r.error) { status.textContent = `Couldn't read it: ${r.error}`; btn.disabled = false; return; }
-    PARSED = r.fields;
-    const f = $("#search-form");
-    if (PARSED.original_origin) f.origin.value = PARSED.original_origin;
-    if (PARSED.original_destination || PARSED.wants_destination)
-      f.destination.value = PARSED.original_destination || PARSED.wants_destination;
-    if (PARSED.party_size) f.party_size.value = PARSED.party_size;
-    if (PARSED.total_paid) f.total_paid.value = PARSED.total_paid;
+    applyFields(r.fields);
     status.textContent = "Got it, searching your real options…";
     await search();
     status.textContent = "Filled in from your message. Edit anything and search again.";
@@ -97,10 +133,12 @@ function optionCard(o, best) {
     : `<span class="stops direct">Direct</span>`;
 
   const net = c.net_out_of_pocket;
-  const netPill = (!o.rejected_reason && net !== undefined)
-    ? (net <= 0
-        ? `<span class="netpill win">refund covers it +${money(-net)}</span>`
-        : `<span class="netpill cost">net ${money(net)}</span>`)
+  const netPill = (!o.rejected_reason && net !== undefined && net !== null)
+    ? ((c.refund_state === "unknown" || c.refund_state === "conditional")
+        ? `<span class="netpill cost">${money(net)} before refund</span>`
+        : net <= 0
+          ? `<span class="netpill win">refund covers it +${money(-net)}</span>`
+          : `<span class="netpill cost">net ${money(net)}</span>`)
     : "";
 
   const chips = [];
@@ -186,30 +224,75 @@ async function search(ev) {
     : "";
 }
 
-// one-click sample cancellations (today's date resolves server-side) so you can
-// see the whole flow without typing anything
+// One-click sample cancellations, so you can see the whole flow without typing
+// anything. `fields` is the JSON the model returns for that text, shipped with the
+// sample - the chips run the full app with no OpenAI key. The /api/parse call is
+// for text you paste yourself.
 const EXAMPLES = [
   { label: "🌩 American · SFO→JFK · weather · 4 travelers",
-    text: "American Airlines: Flight AA1642 from San Francisco (SFO) to New York JFK today has been cancelled due to weather. We've rebooked all 4 of you on AA512 SFO to Phoenix, then AA1188 Phoenix to Newark (EWR) arriving 11:59pm tonight. Confirmation KQ7T2R. You paid $402 per ticket." },
+    text: "American Airlines: Flight AA1642 from San Francisco (SFO) to New York JFK today has been cancelled due to weather. We've rebooked all 4 of you on AA512 SFO to Phoenix, then AA1188 Phoenix to Newark (EWR) arriving 11:59pm tonight. Confirmation KQ7T2R. You paid $402 per ticket.",
+    fields: () => ({
+      original_flight: "AA1642", original_origin: "SFO", original_destination: "JFK",
+      original_depart_local: null, original_arrive_local: null,
+      cause: "weather", disruption_type: "cancelled",
+      party_size: 4, pnrs: ["KQ7T2R"], total_paid: 1608,
+      airline_rebooking: {
+        final_arrive_local: at("23:59"), origin: "SFO", destination: "EWR",
+        segments: [
+          { flight: "AA512", origin: "SFO", destination: "PHX", depart_local: null, arrive_local: null },
+          { flight: "AA1188", origin: "PHX", destination: "EWR", depart_local: null, arrive_local: at("23:59") },
+        ],
+      },
+      wants_destination: "New York",
+    }) },
   { label: "🔧 United · SJC→EWR · mechanical · 2 travelers",
-    text: "United: your flight UA1704 from San Jose (SJC) to Newark (EWR) this morning was cancelled (mechanical). They rebooked me and my wife through Denver, landing close to midnight. Confirmation MW9J4L. We paid $565 each." },
+    text: "United: your flight UA1704 from San Jose (SJC) to Newark (EWR) this morning was cancelled (mechanical). They rebooked me and my wife through Denver, landing close to midnight. Confirmation MW9J4L. We paid $565 each.",
+    fields: () => ({
+      original_flight: "UA1704", original_origin: "SJC", original_destination: "EWR",
+      original_depart_local: null, original_arrive_local: null,
+      cause: "mechanical", disruption_type: "cancelled",
+      party_size: 2, pnrs: ["MW9J4L"], total_paid: 1130,
+      airline_rebooking: {
+        final_arrive_local: at("23:50"), origin: "SJC", destination: "EWR", segments: [],
+      },
+      wants_destination: "Newark",
+    }) },
   { label: "✈️ Delta · SFO→JFK · no rebooking · solo",
-    text: "Delta: Flight DL1290 SFO to New York JFK today was cancelled. We were unable to rebook you automatically. You paid $498." },
+    text: "Delta: Flight DL1290 SFO to New York JFK today was cancelled. We were unable to rebook you automatically. You paid $498.",
+    fields: () => ({
+      original_flight: "DL1290", original_origin: "SFO", original_destination: "JFK",
+      original_depart_local: null, original_arrive_local: null,
+      cause: null, disruption_type: "cancelled",
+      party_size: 1, pnrs: [], total_paid: 498,
+      airline_rebooking: null, wants_destination: "New York",
+    }) },
   { label: "🌩 JetBlue · OAK→JFK · weather · 3 travelers",
-    text: "JetBlue: flight B6 1078 from Oakland (OAK) to New York JFK today is cancelled due to weather. Party of 3. Confirmation PB3X8D. You paid $389 each." },
+    text: "JetBlue: flight B6 1078 from Oakland (OAK) to New York JFK today is cancelled due to weather. Party of 3. Confirmation PB3X8D. You paid $389 each.",
+    fields: () => ({
+      original_flight: "B61078", original_origin: "OAK", original_destination: "JFK",
+      original_depart_local: null, original_arrive_local: null,
+      cause: "weather", disruption_type: "cancelled",
+      party_size: 3, pnrs: ["PB3X8D"], total_paid: 1167,
+      airline_rebooking: null, wants_destination: "New York",
+    }) },
 ];
+
+async function useExample(i) {
+  const ex = EXAMPLES[i];
+  $("#paste-box").value = ex.text;
+  $("#paste-status").textContent = "Sample cancellation - already read for you.";
+  applyFields(ex.fields());
+  await search();
+}
 
 function renderExamples() {
   const box = $("#examples");
   box.innerHTML = EXAMPLES.map((e, i) => `<button type="button" class="ex-chip" data-i="${i}">${e.label}</button>`).join("");
-  box.querySelectorAll(".ex-chip").forEach((btn) => btn.addEventListener("click", () => {
-    $("#paste-box").value = EXAMPLES[Number(btn.dataset.i)].text;
-    readMessage();
-  }));
+  box.querySelectorAll(".ex-chip").forEach((btn) => btn.addEventListener("click", () => useExample(Number(btn.dataset.i))));
 }
 
 $("#search-form").addEventListener("submit", search);
 $("#paste-btn").addEventListener("click", readMessage);
-$("#search-form").depart_after_local.value = nowLocal();
 renderExamples();
 $("#results").innerHTML = `<p class="searched">Paste your cancellation above, or tap a sample, to see your real options.</p>`;
+prefillDepartAfter();

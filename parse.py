@@ -23,6 +23,9 @@ SYSTEM = (
     "Rules: use IATA airport codes (San Jose -> SJC, Newark -> EWR, etc.). "
     "Use null for anything not stated and not confidently inferable. "
     "party_size: count the travelers ('me and my wife' = 2, 'all 4 of you' = 4). "
+    "disruption_type: 'cancelled' only if the message says the flight was cancelled, "
+    "'delayed' for a delay, 'changed' for a schedule change, null if it never says. "
+    "NEVER guess 'cancelled' - the refund rules turn on it. "
     "total_paid: the TOTAL fare for the whole party in USD; if a per-person amount is "
     "given, multiply by party_size. NEVER invent a fare - if no amount is stated, "
     "total_paid MUST be null. Times are local wall-clock 'YYYY-MM-DDTHH:MM'. "
@@ -30,6 +33,7 @@ SYSTEM = (
     "wants_destination is where they actually want to end up (a city or metro is fine). "
     'Shape: {"original_flight":str|null,"original_origin":str|null,"original_destination":str|null,'
     '"original_depart_local":str|null,"original_arrive_local":str|null,"cause":str|null,'
+    '"disruption_type":"cancelled"|"delayed"|"changed"|null,'
     '"party_size":int|null,"pnrs":[str],"total_paid":number|null,'
     '"airline_rebooking":{"final_arrive_local":str|null,"origin":str|null,"destination":str|null,'
     '"segments":[{"flight":str,"origin":str,"destination":str,"depart_local":str,"arrive_local":str}]}|null,'

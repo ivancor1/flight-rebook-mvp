@@ -68,23 +68,72 @@ def significant_change(disruption, offer, airports) -> dict:
     return {"significant": bool(reasons), "reasons": reasons, "threshold_hours": threshold}
 
 
-def refund_entitlement(disruption, offer, airports) -> dict:
-    """What the passengers are owed if they walk away from the rebooking."""
-    cancelled = True  # this MVP is scoped to cancellations
-    change = significant_change(disruption, offer, airports)
-    entitled = cancelled or change["significant"]
-    return {
-        "entitled": entitled,
-        "basis": (
+def _basis(disruption, cancelled, change) -> str:
+    """Why the refund is (or isn't) owed - in the words the rule actually uses."""
+    if cancelled:
+        return (
             "The flight was cancelled. Under 14 CFR 260.6(a)(1) a passenger holding a "
             "nonrefundable ticket who declines the rebooking and declines any voucher "
             "is owed a full refund of the fare, taxes and ancillary fees."
-        ),
+        )
+    if change["significant"]:
+        return (
+            "The flight was not cancelled, but the replacement itinerary is a "
+            "significantly changed flight under 14 CFR 260.2 ("
+            + "; ".join(r.rstrip(".") for r in change["reasons"]) +
+            "). Under 14 CFR 260.6(a)(1) a passenger holding a nonrefundable ticket who "
+            "declines a significantly changed flight, declines rebooking and declines any "
+            "voucher is owed a full refund of the fare, taxes and ancillary fees."
+        )
+    if not disruption.disruption_type:
+        return (
+            "Nothing here says the flight was cancelled, so no refund is established yet. "
+            "IF it was cancelled - or the replacement is a significantly changed flight "
+            "under 14 CFR 260.2 - then 14 CFR 260.6(a)(1) owes you the full fare, taxes and "
+            "ancillary fees when you decline the rebooking and any voucher."
+        )
+    return (
+        f"No automatic refund under 14 CFR 260.6 on what we know: this is a "
+        f"{disruption.disruption_type} flight, not a cancellation, and the change to the "
+        f"itinerary is under the {change['threshold_hours']}-hour threshold in 14 CFR 260.2, "
+        "with no different airport and no added connection. You can still ask the airline, "
+        "and a refundable fare is refundable regardless."
+    )
+
+
+def refund_entitlement(disruption, offer, airports) -> dict:
+    """What the passengers are owed if they walk away from the rebooking."""
+    cancelled = disruption.is_cancellation
+    change = significant_change(disruption, offer, airports)
+    # "No alternative was offered" only establishes a refund when the flight actually
+    # went away. With no offer to look at and no cancellation on record, we know nothing.
+    changed = change["significant"] and offer is not None
+    entitled = cancelled or changed
+    # A fare of 0.0 means nobody told us what the ticket cost. Reporting that as a
+    # $0 refund reads like "you get nothing"; it has to stay unknown.
+    known = disruption.fare_known
+    amount = disruption.total_paid if (entitled and known) else None
+    if entitled:
+        state = "known" if known else "unknown"
+    elif not disruption.disruption_type:
+        # We were never told what happened. Don't claim a refund - but don't hide the
+        # number either; say what it would be if the flight was in fact cancelled.
+        state = "conditional"
+    else:
+        state = "none"
+    return {
+        "entitled": entitled,
+        "basis": _basis(disruption, cancelled, change if changed else {**change, "significant": False}),
         "citation": CITATION,
         "prompt_refund": PROMPT_REFUND,
-        "refund_amount": disruption.total_paid,
+        "refund_amount": amount,
+        "refund_if_cancelled": disruption.total_paid if known else None,
+        # "known" | "unknown" (owed, no fare given) | "conditional" (we weren't told
+        # what happened) | "none" (told, and it isn't a refundable event)
+        "refund_state": state,
         "per_passenger": [
-            {"name": p.name, "pnr": p.pnr, "refund": p.fare_paid} for p in disruption.passengers
+            {"name": p.name, "pnr": p.pnr, "refund": (p.fare_paid if (entitled and known) else None)}
+            for p in disruption.passengers
         ],
         "airline_offer_is_significant_change": change,
         "caveats": [
@@ -104,7 +153,7 @@ def compare(option, disruption, offer, engine) -> dict:
     party = disruption.party_size
     ent = refund_entitlement(disruption, offer, airports)
     new_cost = round(option.price_per_person() * party, 2)
-    refund = ent["refund_amount"] if ent["entitled"] else 0.0
+    refund = ent["refund_amount"] or 0.0
     net = round(new_cost - refund, 2)
     minutes_saved = engine.better_than(option, offer)
     hours_saved = round(minutes_saved / 60.0, 1) if minutes_saved is not None else None
@@ -114,20 +163,29 @@ def compare(option, disruption, offer, engine) -> dict:
     return {
         "option_id": "-".join(s.flight for s in option.segments),
         "new_ticket_total": new_cost,
-        "refund_if_you_decline": refund,
-        "net_out_of_pocket": net,
+        "refund_if_you_decline": ent["refund_amount"],
+        "refund_state": ent["refund_state"],
+        "net_out_of_pocket": net,   # before the refund when refund_state is "unknown"
         "hours_earlier_than_airline_offer": hours_saved,
         "net_cost_per_hour_saved": dollars_per_hour,
-        "verdict": _verdict(net, hours_saved),
+        "verdict": _verdict(net, hours_saved, ent["refund_state"]),
         "entitlement": ent,
     }
 
 
-def _verdict(net: float, hours_saved) -> str:
+def _verdict(net: float, hours_saved, refund_state: str = "known") -> str:
     if hours_saved is None:
         return "No airline offer to compare against."
     if hours_saved <= 0:
         return "No better than what the airline already gave you."
+    if refund_state == "unknown":
+        return (f"Gets you there {hours_saved}h earlier for ${net:.2f} up front, before the refund "
+                "you're owed - enter what you paid to see what it nets out to.")
+    if refund_state == "conditional":
+        return (f"Gets you there {hours_saved}h earlier for ${net:.2f} up front, before any refund "
+                "you turn out to be owed.")
+    if refund_state == "none":
+        return f"Gets you there {hours_saved}h earlier for ${net:.2f}, with no refund owed on this one."
     if net <= 0:
         return f"Gets you there {hours_saved}h earlier and the refund covers it with ${abs(net):.2f} left over."
     return f"Gets you there {hours_saved}h earlier for ${net:.2f} out of pocket after the refund."

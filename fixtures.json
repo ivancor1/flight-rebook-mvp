@@ -1,5 +1,6 @@
 {
   "generated_for": "2026-07-28 Bay Area -> New York, weather cancellation demo",
+  "scenario_now_local": "2026-07-28T11:00",
   "airports": [
     {"code": "SFO", "name": "San Francisco Intl", "metro": "BAY", "utc_offset_minutes": -420},
     {"code": "SJC", "name": "San Jose Mineta", "metro": "BAY", "utc_offset_minutes": -420},
@@ -54,6 +55,7 @@
     "original_depart_local": "2026-07-28T13:30",
     "original_arrive_local": "2026-07-28T22:05",
     "cause": "weather",
+    "disruption_type": "cancelled",
     "itinerary_type": "domestic",
     "passengers": [
       {"name": "Passenger 1", "pnr": "KQ7T2R", "fare_paid": 384.0},

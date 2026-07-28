@@ -124,6 +124,9 @@ def build_disruption(d):
         return None
     try:
         party = int(d.get("party_size") or DISRUPTION.party_size)
+        dtype = str(d.get("disruption_type") or "").strip().lower()
+        if dtype not in ("cancelled", "delayed", "changed"):
+            dtype = ""  # never assume a cancellation we weren't told about
         total = d.get("total_paid")
         pnrs = d.get("pnrs") or []
         passengers = []
@@ -138,7 +141,8 @@ def build_disruption(d):
             original_destination=d.get("original_destination") or "",
             original_depart_local=d.get("original_depart_local") or "",
             original_arrive_local=d.get("original_arrive_local") or "",
-            cause=d.get("cause") or "cancellation",
+            cause=d.get("cause") or "",
+            disruption_type=dtype,
             itinerary_type="domestic",
             passengers=passengers,
             airline_offer=build_airline_offer(d.get("airline_rebooking"), d),
@@ -147,9 +151,11 @@ def build_disruption(d):
         print(f"disruption build failed ({exc}); using fixture demo.")
         return DISRUPTION
 
-# The fixture scenario is frozen at this moment: standing at SJC just after the
-# gate agent handed over the redeye. Real deployments would use the wall clock.
-SCENARIO_NOW_LOCAL = "2026-07-28T11:00"
+# The fixture scenario is frozen at one moment: standing at SJC just after the
+# gate agent handed over the redeye. FixtureSource shifts that moment onto today,
+# so the seeded flights are always still ahead of the clock. A live source uses
+# the real wall clock instead (see uses_demo_clock, which the UI reads).
+SCENARIO_NOW_LOCAL = SOURCE.now_local()
 SCENARIO_TZ_AIRPORT = "SJC"
 
 
@@ -163,6 +169,7 @@ def scenario_payload() -> dict:
     return {
         "now_local": SCENARIO_NOW_LOCAL,
         "now_airport": SCENARIO_TZ_AIRPORT,
+        "uses_demo_clock": getattr(SOURCE, "uses_demo_clock", False),
         "data_source": {"name": SOURCE.name, "note": SOURCE.coverage_note},
         "disruption": {
             "original_flight": DISRUPTION.original_flight,
@@ -171,6 +178,7 @@ def scenario_payload() -> dict:
             "depart_local": DISRUPTION.original_depart_local,
             "arrive_local": DISRUPTION.original_arrive_local,
             "cause": DISRUPTION.cause,
+            "disruption_type": DISRUPTION.disruption_type,
             "party_size": DISRUPTION.party_size,
             "pnrs": DISRUPTION.pnrs,
             "total_paid": DISRUPTION.total_paid,
@@ -243,6 +251,7 @@ def run_search(body: dict) -> dict:
             "destination": disruption.original_destination,
             "arrive_local": disruption.original_arrive_local,
             "cause": disruption.cause,
+            "disruption_type": disruption.disruption_type,
             "party_size": disruption.party_size,
             "pnrs": disruption.pnrs,
             "total_paid": disruption.total_paid,

@@ -10,7 +10,7 @@ import os
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Dict, List
 
 from models import Airport, Segment, Passenger, Disruption, Option
@@ -44,14 +44,31 @@ class FixtureSource(FlightSource):
 
     name = "fixtures"
     coverage_note = (
-        "Seeded fixture data for 2026-07-28 Bay Area -> New York. Real flight "
-        "numbers and plausible times, but the seat counts and fares are made up. "
-        "Nothing here is live availability."
+        "Seeded fixture data, Bay Area -> New York, date-shifted to the day you run "
+        "it. Real flight numbers and plausible times, but the seat counts and fares "
+        "are made up. Nothing here is live availability."
     )
+    uses_demo_clock = True   # the scenario clock, not the wall clock, drives the demo
 
-    def __init__(self, path: str = FIXTURE_PATH):
+    def __init__(self, path: str = FIXTURE_PATH, today: date = None):
         with open(path) as fh:
             self.raw = json.load(fh)
+        self.scenario_now_local = self.raw.get("scenario_now_local", "2026-07-28T11:00")
+        # The fixtures were written for one specific day. Shift every timestamp by
+        # whole days so the scenario always lands on the day the app is run -
+        # otherwise the seeded flights are in the past and a search finds nothing.
+        base = datetime.strptime(self.scenario_now_local[:10], "%Y-%m-%d").date()
+        self.day_shift = timedelta(days=((today or date.today()) - base).days)
+
+    def shift(self, ts: str) -> str:
+        """Move a fixture wall-clock stamp onto the current day, keeping the time."""
+        if not ts or not self.day_shift:
+            return ts
+        return (datetime.strptime(ts[:16], "%Y-%m-%dT%H:%M") + self.day_shift).strftime("%Y-%m-%dT%H:%M")
+
+    def now_local(self) -> str:
+        """The moment the scenario is frozen at, on today's date."""
+        return self.shift(self.scenario_now_local)
 
     def airports(self):
         return {a["code"]: Airport(**a) for a in self.raw["airports"]}
@@ -71,8 +88,8 @@ class FixtureSource(FlightSource):
                 number=s["number"],
                 origin=s["origin"],
                 destination=s["destination"],
-                depart_local=s["depart_local"],
-                arrive_local=s["arrive_local"],
+                depart_local=self.shift(s["depart_local"]),
+                arrive_local=self.shift(s["arrive_local"]),
                 seats_available=s["seats_available"],
                 fare_per_person=s["fare_per_person"],
                 aircraft=s.get("aircraft", ""),
@@ -94,9 +111,10 @@ class FixtureSource(FlightSource):
             original_flight=d["original_flight"],
             original_origin=d["original_origin"],
             original_destination=d["original_destination"],
-            original_depart_local=d["original_depart_local"],
-            original_arrive_local=d["original_arrive_local"],
+            original_depart_local=self.shift(d["original_depart_local"]),
+            original_arrive_local=self.shift(d["original_arrive_local"]),
             cause=d["cause"],
+            disruption_type=d.get("disruption_type", "cancelled"),
             itinerary_type=d["itinerary_type"],
             passengers=[Passenger(**p) for p in d["passengers"]],
             airline_offer=offer,
@@ -127,6 +145,7 @@ class DuffelSource(FixtureSource):
     """
 
     name = "duffel-live"
+    uses_demo_clock = False  # live inventory follows the real wall clock
     coverage_note = (
         "Live Duffel inventory: real bookable offers, priced for your whole party, "
         "across the carriers Duffel covers. Southwest is not on any self-serve API "
