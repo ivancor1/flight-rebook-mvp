@@ -68,14 +68,17 @@ def _split_flight(flight: str):
     return (m.group(1).upper(), m.group(2)) if m else ((flight or "").strip(), "")
 
 
-def _ensure_airport(code: str):
+def _ensure_airport(engine, code: str):
     """A stub keeps the door-to-door math from crashing on an airport we don't
-    have a timezone for; offsets only matter within the searched metros (known)."""
-    if code and code not in ENGINE.airports:
-        ENGINE.airports[code] = Airport(code=code, name=code, metro="", utc_offset_minutes=0)
+    have a timezone for; offsets only matter within the searched metros (known).
+
+    `engine` is always the per-request view, never the shared one - see
+    Engine.for_request()."""
+    if code and code not in engine.airports:
+        engine.airports[code] = Airport(code=code, name=code, metro="", utc_offset_minutes=0)
 
 
-def build_airline_offer(reb: dict, d: dict):
+def build_airline_offer(reb: dict, d: dict, engine):
     """The itinerary the airline already rebooked them onto - the baseline every
     option is compared against. None if the message didn't mention one."""
     if not reb:
@@ -106,9 +109,9 @@ def build_airline_offer(reb: dict, d: dict):
                              depart_local=dep[:16], arrive_local=final_arr[:16],
                              seats_available=9, fare_per_person=0.0)]
         for s in built:
-            _ensure_airport(s.origin)
-            _ensure_airport(s.destination)
-        offer = ENGINE._wrap(built)
+            _ensure_airport(engine, s.origin)
+            _ensure_airport(engine, s.destination)
+        offer = engine._wrap(built)
         offer.tags = ["airline_offer"]
         offer.notes = ["What the airline put you on without asking."]
         return offer
@@ -117,7 +120,7 @@ def build_airline_offer(reb: dict, d: dict):
         return None
 
 
-def build_disruption(d):
+def build_disruption(d, engine):
     """Build a Disruption from the user's own (parsed or entered) fields, or None
     when nothing was supplied - the app starts on a clean slate, no demo flight."""
     if not d:
@@ -148,7 +151,7 @@ def build_disruption(d):
             original_connections=conns,
             itinerary_type="domestic",
             passengers=passengers,
-            airline_offer=build_airline_offer(d.get("airline_rebooking"), d),
+            airline_offer=build_airline_offer(d.get("airline_rebooking"), d, engine),
         )
     except Exception as exc:
         print(f"disruption build failed ({exc}); using fixture demo.")
@@ -196,16 +199,19 @@ def scenario_payload() -> dict:
 
 
 def run_search(body: dict) -> dict:
-    disruption = build_disruption(body.get("disruption"))
+    # Every request gets its own engine view: the handler runs on a thread and
+    # searching a live source writes stub airports as it goes.
+    engine = ENGINE.for_request()
+    disruption = build_disruption(body.get("disruption"), engine)
     origin = body.get("origin") or "SFO"
     destination = body.get("destination") or "NYC"
     party = int(body.get("party_size") or (disruption.party_size if disruption else 1))
     after_local = body.get("depart_after_local") or SCENARIO_NOW_LOCAL
-    tz_airport = ENGINE.expand(origin)[0]
-    after_utc = parse(after_local) - timedelta(minutes=ENGINE.airports[tz_airport].utc_offset_minutes)
+    tz_airport = engine.expand(origin)[0]
+    after_utc = parse(after_local) - timedelta(minutes=engine.airports[tz_airport].utc_offset_minutes)
     include_self = bool(body.get("include_self_connections", True))
 
-    result = ENGINE.search(origin, destination, party, after_utc, include_self_connections=include_self)
+    result = engine.search(origin, destination, party, after_utc, include_self_connections=include_self)
     offer = disruption.airline_offer if disruption else None
 
     MAX_SHOWN = 20  # options are ranked by door-to-door arrival; show the best of them
@@ -213,10 +219,10 @@ def run_search(body: dict) -> dict:
 
     options = []
     for o in result["options"][:MAX_SHOWN]:
-        d = o.to_dict(ENGINE.airports)
-        d["minutes_earlier_than_offer"] = ENGINE.better_than(o, offer)
+        d = o.to_dict(engine.airports)
+        d["minutes_earlier_than_offer"] = engine.better_than(o, offer)
         if disruption:
-            d["comparison"] = compare(o, disruption, offer, ENGINE)
+            d["comparison"] = compare(o, disruption, offer, engine)
             d["different_airport_than_ticketed"] = (
                 o.origin != disruption.original_origin or o.destination != disruption.original_destination
             )
@@ -226,8 +232,8 @@ def run_search(body: dict) -> dict:
     total_collapsed = len(result["collapsed_on_party_size"])
     collapsed = []
     for o in result["collapsed_on_party_size"][:MAX_COLLAPSED]:
-        d = o.to_dict(ENGINE.airports)
-        d["minutes_earlier_than_offer"] = ENGINE.better_than(o, offer)
+        d = o.to_dict(engine.airports)
+        d["minutes_earlier_than_offer"] = engine.better_than(o, offer)
         collapsed.append(d)
 
     return {
@@ -247,7 +253,7 @@ def run_search(body: dict) -> dict:
         "collapsed_on_party_size": collapsed,
         "total_collapsed_found": total_collapsed,
         "data_source": {"name": SOURCE.name, "note": SOURCE.coverage_note},
-        "airline_offer": offer.to_dict(ENGINE.airports) if offer else None,
+        "airline_offer": offer.to_dict(engine.airports) if offer else None,
         "disruption": {
             "original_flight": disruption.original_flight,
             "origin": disruption.original_origin,
@@ -259,7 +265,7 @@ def run_search(body: dict) -> dict:
             "pnrs": disruption.pnrs,
             "total_paid": disruption.total_paid,
         } if disruption else None,
-        "entitlement": refund_entitlement(disruption, offer, ENGINE.airports) if disruption else None,
+        "entitlement": refund_entitlement(disruption, offer, engine.airports) if disruption else None,
     }
 
 

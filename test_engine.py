@@ -1,6 +1,9 @@
 """Run: python3 -m unittest -v"""
+import threading
 import unittest
 from datetime import date, datetime, timedelta
+
+import app as api
 
 from sources import FixtureSource
 from engine import Engine
@@ -222,6 +225,51 @@ class TestEntitlement(unittest.TestCase):
         c = compare(r["options"][0], dis, offer, self.eng)
         self.assertEqual(c["net_out_of_pocket"], c["new_ticket_total"])
         self.assertNotIn("after the refund", c["verdict"])
+
+
+class TestRequestIsolation(unittest.TestCase):
+    """A request must not be able to scribble on state another request is reading."""
+
+    def _body(self, airport_code):
+        day = api.SCENARIO_NOW_LOCAL[:10]
+        return {
+            "origin": "SJC", "destination": "NYC", "party_size": 2,
+            "depart_after_local": api.SCENARIO_NOW_LOCAL,
+            "disruption": {
+                "original_flight": "XX1", "original_origin": airport_code,
+                "original_destination": "JFK", "disruption_type": "cancelled",
+                "party_size": 2, "total_paid": 800,
+                "airline_rebooking": {"final_arrive_local": f"{day}T23:00",
+                                      "origin": airport_code, "destination": "JFK",
+                                      "segments": []},
+            },
+        }
+
+    def test_invented_airports_stay_inside_the_request(self):
+        before = set(api.ENGINE.airports)
+        result = api.run_search(self._body("ZZZ"))
+        self.assertTrue(result["options"])
+        self.assertEqual(set(api.ENGINE.airports), before,
+                         "a request added a stub airport to the shared engine")
+
+    def test_concurrent_requests_do_not_collide(self):
+        before = set(api.ENGINE.airports)
+        errors, results = [], []
+
+        def go(code):
+            try:
+                results.append(api.run_search(self._body(code)))
+            except Exception as exc:      # a dict mutated mid-iteration lands here
+                errors.append(exc)
+
+        threads = [threading.Thread(target=go, args=(f"Z{i:02d}",)) for i in range(12)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(errors, [])
+        self.assertEqual(len(results), 12)
+        self.assertEqual(set(api.ENGINE.airports), before)
 
 
 if __name__ == "__main__":

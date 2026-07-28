@@ -1,4 +1,5 @@
 """The search. This is the part the airline will not do for you."""
+import copy
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
@@ -21,6 +22,21 @@ class Engine:
         self.metros = source.metros()
         self.all_segments: List[Segment] = source.segments()
         self.ground = source.ground_minutes()
+
+    def for_request(self) -> "Engine":
+        """A view of this engine that one request can safely scribble on.
+
+        A live search invents stub Airports for connection hubs it has never
+        seen, and the API layer does the same for airports the traveller's own
+        message mentions. Under ThreadingHTTPServer those writes land in a dict
+        another request is reading, which is a race at best and a RuntimeError
+        mid-iteration at worst. The shared reference data (segments, metros,
+        ground times, the source itself) is read-only and stays shared; only
+        the airports dict is copied.
+        """
+        view = copy.copy(self)
+        view.airports = dict(self.airports)
+        return view
 
     # --- strategy 1: treat both ends as metro areas ---------------
     def expand(self, code: str) -> List[str]:
