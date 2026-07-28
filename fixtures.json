@@ -15,7 +15,7 @@
   ],
   "metros": {
     "BAY": {"name": "San Francisco Bay Area", "airports": ["SFO", "SJC", "OAK"]},
-    "NYC": {"name": "New York City", "airports": ["JFK", "EWR", "LGA"]}
+    "NYC": {"name": "New York City", "airports": ["JFK", "EWR", "LGA"], "duffel_city": "NYC"}
   },
   "ground_minutes": {
     "from_traveller": {"SJC": 15, "SFO": 55, "OAK": 50},

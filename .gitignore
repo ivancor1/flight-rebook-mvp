@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 .DS_Store
 .venv/
+
+# Secrets - never commit
+.env
+duffel_token.txt
+openai_key.txt

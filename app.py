@@ -9,21 +9,143 @@ Standard library only. No pip install, no network access needed.
 import argparse
 import json
 import os
+import re
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
 from engine import Engine
 from entitlement import compare, refund_entitlement
-from models import parse
-from sources import FixtureSource
+from models import Airport, Disruption, Option, Passenger, Segment, parse
+from parse import parse_disruption
+from sources import DuffelSource, FixtureSource
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC = HERE  # flat layout: index.html, style.css and app.js sit next to app.py
 
-SOURCE = FixtureSource()
+
+def make_source():
+    """Use live Duffel inventory if a token is available, else the seeded fixtures.
+
+    Token lookup: $DUFFEL_ACCESS_TOKEN, then a git-ignored duffel_token.txt next
+    to this file. No token -> the offline fixture demo, exactly as before.
+    """
+    token = os.environ.get("DUFFEL_ACCESS_TOKEN", "").strip()
+    if not token:
+        token_file = os.path.join(HERE, "duffel_token.txt")
+        if os.path.isfile(token_file):
+            with open(token_file) as fh:
+                token = fh.read().strip()
+    if token:
+        try:
+            return DuffelSource(token)
+        except Exception as exc:  # never let a bad token take the app down
+            print(f"Duffel source unavailable ({exc}); falling back to fixtures.")
+    return FixtureSource()
+
+
+def openai_key():
+    """$OPENAI_API_KEY, then a git-ignored openai_key.txt. Empty string if absent."""
+    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if not key:
+        key_file = os.path.join(HERE, "openai_key.txt")
+        if os.path.isfile(key_file):
+            with open(key_file) as fh:
+                key = fh.read().strip()
+    return key
+
+
+OPENAI_KEY = openai_key()
+
+SOURCE = make_source()
 ENGINE = Engine(SOURCE)
 DISRUPTION = SOURCE.disruption()
+
+
+# --- turning parsed/entered fields into a real Disruption ----------------
+def _split_flight(flight: str):
+    m = re.match(r"^\s*([A-Za-z]{1,3})\s*0*(\d+)\s*$", flight or "")
+    return (m.group(1).upper(), m.group(2)) if m else ((flight or "").strip(), "")
+
+
+def _ensure_airport(code: str):
+    """A stub keeps the door-to-door math from crashing on an airport we don't
+    have a timezone for; offsets only matter within the searched metros (known)."""
+    if code and code not in ENGINE.airports:
+        ENGINE.airports[code] = Airport(code=code, name=code, metro="", utc_offset_minutes=0)
+
+
+def build_airline_offer(reb: dict, d: dict):
+    """The itinerary the airline already rebooked them onto - the baseline every
+    option is compared against. None if the message didn't mention one."""
+    if not reb:
+        return None
+    try:
+        final_arr = reb.get("final_arrive_local")
+        dest = reb.get("destination") or d.get("original_destination")
+        orig = reb.get("origin") or d.get("original_origin")
+        built = []
+        segs = reb.get("segments") or []
+        for i, s in enumerate(segs):
+            arr = s.get("arrive_local") or (final_arr if i == len(segs) - 1 else None)
+            dep = s.get("depart_local")
+            if not (arr and dep and s.get("origin") and s.get("destination")):
+                built = []
+                break
+            carrier, number = _split_flight(s.get("flight", ""))
+            built.append(Segment(carrier=carrier, carrier_name=carrier or "airline", number=number,
+                                  origin=s["origin"], destination=s["destination"],
+                                  depart_local=dep[:16], arrive_local=arr[:16],
+                                  seats_available=9, fare_per_person=0.0))
+        if not built:  # only a final arrival is known - one synthetic leg
+            if not (final_arr and dest):
+                return None
+            dep = d.get("original_depart_local") or final_arr
+            built = [Segment(carrier="", carrier_name="airline", number="",
+                             origin=orig or dest, destination=dest,
+                             depart_local=dep[:16], arrive_local=final_arr[:16],
+                             seats_available=9, fare_per_person=0.0)]
+        for s in built:
+            _ensure_airport(s.origin)
+            _ensure_airport(s.destination)
+        offer = ENGINE._wrap(built)
+        offer.tags = ["airline_offer"]
+        offer.notes = ["What the airline put you on without asking."]
+        return offer
+    except Exception as exc:
+        print(f"airline_offer build skipped: {exc}")
+        return None
+
+
+def build_disruption(d):
+    """Build a Disruption from the user's own (parsed or entered) fields, or None
+    when nothing was supplied - the app starts on a clean slate, no demo flight."""
+    if not d:
+        return None
+    try:
+        party = int(d.get("party_size") or DISRUPTION.party_size)
+        total = d.get("total_paid")
+        pnrs = d.get("pnrs") or []
+        passengers = []
+        for i in range(max(party, 1)):
+            fare = round(float(total) / party, 2) if total else 0.0
+            passengers.append(Passenger(name=f"Passenger {i + 1}",
+                                        pnr=pnrs[i % len(pnrs)] if pnrs else "-",
+                                        fare_paid=fare))
+        return Disruption(
+            original_flight=d.get("original_flight") or "your cancelled flight",
+            original_origin=d.get("original_origin") or "",
+            original_destination=d.get("original_destination") or "",
+            original_depart_local=d.get("original_depart_local") or "",
+            original_arrive_local=d.get("original_arrive_local") or "",
+            cause=d.get("cause") or "cancellation",
+            itinerary_type="domestic",
+            passengers=passengers,
+            airline_offer=build_airline_offer(d.get("airline_rebooking"), d),
+        )
+    except Exception as exc:
+        print(f"disruption build failed ({exc}); using fixture demo.")
+        return DISRUPTION
 
 # The fixture scenario is frozen at this moment: standing at SJC just after the
 # gate agent handed over the redeye. Real deployments would use the wall clock.
@@ -63,29 +185,36 @@ def scenario_payload() -> dict:
 
 
 def run_search(body: dict) -> dict:
-    origin = body.get("origin", "SJC")
-    destination = body.get("destination", "NYC")
-    party = int(body.get("party_size", DISRUPTION.party_size))
+    disruption = build_disruption(body.get("disruption"))
+    origin = body.get("origin") or "SFO"
+    destination = body.get("destination") or "NYC"
+    party = int(body.get("party_size") or (disruption.party_size if disruption else 1))
     after_local = body.get("depart_after_local") or SCENARIO_NOW_LOCAL
     tz_airport = ENGINE.expand(origin)[0]
     after_utc = parse(after_local) - timedelta(minutes=ENGINE.airports[tz_airport].utc_offset_minutes)
     include_self = bool(body.get("include_self_connections", True))
 
     result = ENGINE.search(origin, destination, party, after_utc, include_self_connections=include_self)
-    offer = DISRUPTION.airline_offer
+    offer = disruption.airline_offer if disruption else None
+
+    MAX_SHOWN = 20  # options are ranked by door-to-door arrival; show the best of them
+    total_found = len(result["options"])
 
     options = []
-    for o in result["options"]:
+    for o in result["options"][:MAX_SHOWN]:
         d = o.to_dict(ENGINE.airports)
-        d["comparison"] = compare(o, DISRUPTION, offer, ENGINE)
         d["minutes_earlier_than_offer"] = ENGINE.better_than(o, offer)
-        d["different_airport_than_ticketed"] = (
-            o.origin != DISRUPTION.original_origin or o.destination != DISRUPTION.original_destination
-        )
+        if disruption:
+            d["comparison"] = compare(o, disruption, offer, ENGINE)
+            d["different_airport_than_ticketed"] = (
+                o.origin != disruption.original_origin or o.destination != disruption.original_destination
+            )
         options.append(d)
 
+    MAX_COLLAPSED = 8  # a live search can surface dozens; show the best-timed ones
+    total_collapsed = len(result["collapsed_on_party_size"])
     collapsed = []
-    for o in result["collapsed_on_party_size"]:
+    for o in result["collapsed_on_party_size"][:MAX_COLLAPSED]:
         d = o.to_dict(ENGINE.airports)
         d["minutes_earlier_than_offer"] = ENGINE.better_than(o, offer)
         collapsed.append(d)
@@ -103,8 +232,22 @@ def run_search(body: dict) -> dict:
             "destinations": result["destinations_searched"],
         },
         "options": options,
+        "total_options_found": total_found,
         "collapsed_on_party_size": collapsed,
-        "airline_offer": offer.to_dict(ENGINE.airports),
+        "total_collapsed_found": total_collapsed,
+        "data_source": {"name": SOURCE.name, "note": SOURCE.coverage_note},
+        "airline_offer": offer.to_dict(ENGINE.airports) if offer else None,
+        "disruption": {
+            "original_flight": disruption.original_flight,
+            "origin": disruption.original_origin,
+            "destination": disruption.original_destination,
+            "arrive_local": disruption.original_arrive_local,
+            "cause": disruption.cause,
+            "party_size": disruption.party_size,
+            "pnrs": disruption.pnrs,
+            "total_paid": disruption.total_paid,
+        } if disruption else None,
+        "entitlement": refund_entitlement(disruption, offer, ENGINE.airports) if disruption else None,
     }
 
 
@@ -137,14 +280,33 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": "not found"}, 404)
 
     def do_POST(self):
-        if urlparse(self.path).path != "/api/search":
+        path = urlparse(self.path).path
+        if path not in ("/api/search", "/api/parse"):
             return self._json({"error": "not found"}, 404)
         length = int(self.headers.get("Content-Length", 0))
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
+        except Exception as exc:
+            return self._json({"error": f"bad request: {exc}"}, 400)
+        if path == "/api/parse":
+            return self._parse(body)
+        try:
             return self._json(run_search(body))
         except Exception as exc:  # keep the demo alive, show the reason
             return self._json({"error": str(exc)}, 400)
+
+    def _parse(self, body):
+        text = (body.get("text") or "").strip()
+        if not text:
+            return self._json({"error": "Paste the message the airline sent you."}, 400)
+        if not OPENAI_KEY:
+            return self._json({"error": "No OpenAI key configured (openai_key.txt)."}, 400)
+        try:
+            today = datetime.now().strftime("%Y-%m-%d")
+            fields = parse_disruption(text, OPENAI_KEY, today=today)
+            return self._json({"fields": fields})
+        except Exception as exc:
+            return self._json({"error": str(exc)}, 502)
 
     def _file(self, name, ctype):
         p = os.path.join(STATIC, name)

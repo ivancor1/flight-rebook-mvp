@@ -34,6 +34,7 @@ class Segment:
     seats_available: int    # bookable seats in the cheapest available bucket
     fare_per_person: float  # USD, one-way, this leg
     aircraft: str = ""
+    logo: str = ""          # carrier logo URL (from a live source; blank on fixtures)
 
     @property
     def flight(self) -> str:

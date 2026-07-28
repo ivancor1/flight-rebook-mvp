@@ -15,6 +15,15 @@ from models import parse
 DOMESTIC_HOURS = 3
 INTERNATIONAL_HOURS = 6
 
+
+def _safe_parse(ts):
+    """Parse a local time string, or None if it's missing/malformed (real user
+    input from the parser won't always carry a full timestamp)."""
+    try:
+        return parse(ts)
+    except (TypeError, ValueError):
+        return None
+
 CITATION = "14 CFR 260.6(a)(1) - https://www.law.cornell.edu/cfr/text/14/260.6"
 PROMPT_REFUND = (
     "A refund owed under this rule must be paid in the original form of payment "
@@ -35,17 +44,19 @@ def significant_change(disruption, offer, airports) -> dict:
     if offer is None:
         return {"significant": True, "reasons": ["No alternative was offered."], "threshold_hours": threshold}
 
-    orig_arr = parse(disruption.original_arrive_local)
-    new_arr = parse(offer.segments[-1].arrive_local)
-    late_hours = (new_arr - orig_arr).total_seconds() / 3600.0
-    if late_hours >= threshold:
-        reasons.append(f"Arrives {late_hours:.1f}h later than the flight you bought (threshold {threshold}h).")
+    orig_arr = _safe_parse(disruption.original_arrive_local)
+    new_arr = _safe_parse(offer.segments[-1].arrive_local)
+    if orig_arr and new_arr:
+        late_hours = (new_arr - orig_arr).total_seconds() / 3600.0
+        if late_hours >= threshold:
+            reasons.append(f"Arrives {late_hours:.1f}h later than the flight you bought (threshold {threshold}h).")
 
-    orig_dep = parse(disruption.original_depart_local)
-    new_dep = parse(offer.segments[0].depart_local)
-    early_hours = (orig_dep - new_dep).total_seconds() / 3600.0
-    if early_hours >= threshold:
-        reasons.append(f"Departs {early_hours:.1f}h earlier than booked (threshold {threshold}h).")
+    orig_dep = _safe_parse(disruption.original_depart_local)
+    new_dep = _safe_parse(offer.segments[0].depart_local)
+    if orig_dep and new_dep:
+        early_hours = (orig_dep - new_dep).total_seconds() / 3600.0
+        if early_hours >= threshold:
+            reasons.append(f"Departs {early_hours:.1f}h earlier than booked (threshold {threshold}h).")
 
     if offer.origin != disruption.original_origin:
         reasons.append(f"Different departure airport ({disruption.original_origin} -> {offer.origin}).")

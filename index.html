@@ -7,33 +7,52 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header>
-  <h1>Rebook</h1>
-  <p class="tag">Your flight got cancelled. The airline can only rebook you on its own metal, out of the airport on your ticket. This looks at every airport in both metro areas, every carrier in the data, and checks that seats exist for your whole party.</p>
+<header class="topbar">
+  <div class="brand"><span class="plane">✈</span> Rebook</div>
+  <div class="brand-sub">the flight the airline won't offer you</div>
 </header>
-
-<main>
-  <section id="scenario" class="panel">
-    <h2>What happened</h2>
-    <div id="scenario-body" class="loading">loading...</div>
+<div class="wrap">
+  <section class="hero">
+    <h1>Find the flight they won't offer you.</h1>
+    <p>Every airport, every airline, your whole party, plus the refund.</p>
   </section>
 
-  <section class="panel">
-    <h2>Search</h2>
-    <form id="search-form">
-      <label>From <input name="origin" value="SJC" size="6"></label>
-      <label>To <input name="destination" value="NYC" size="6"></label>
-      <label>Passengers <input name="party_size" type="number" min="1" max="9" value="4"></label>
-      <label>Depart after <input name="depart_after_local" value="2026-07-28T11:00" size="18"></label>
-      <label class="check"><input name="include_self_connections" type="checkbox" checked> allow separate-ticket connections</label>
-      <button type="submit">Find better options</button>
-    </form>
-    <p class="hint" id="searched"></p>
+  <section class="card" id="paste-panel">
+    <h2>Got cancelled? Paste what the airline sent you</h2>
+    <textarea id="paste-box" rows="3" placeholder="Paste the cancellation text or email, e.g. &quot;American: flight AA1642 SFO to JFK cancelled, we rebooked all 4 of you on..., you paid $402 per ticket.&quot;  It fills everything in for you."></textarea>
+    <div class="paste-row">
+      <button id="paste-btn" type="button" class="pill-btn">Read it &rarr;</button>
+      <span class="hint" id="paste-status"></span>
+    </div>
+    <div class="examples">
+      <span class="ex-label">No message handy? Try a cancellation from today:</span>
+      <div id="examples"></div>
+    </div>
+  </section>
+
+  <form id="search-form" class="searchbar">
+    <div class="field"><label>From</label><input name="origin" value="SFO" autocomplete="off"></div>
+    <div class="vdiv"></div>
+    <div class="field"><label>To</label><input name="destination" value="NYC" autocomplete="off"></div>
+    <div class="vdiv"></div>
+    <div class="field" style="flex:0 1 96px"><label>Passengers</label><input name="party_size" type="number" min="1" max="9" value="1"></div>
+    <div class="vdiv"></div>
+    <div class="field" style="flex:0 1 118px"><label>You paid ($ total)</label><input name="total_paid" type="number" min="0" step="1" placeholder="total $"></div>
+    <div class="vdiv"></div>
+    <div class="field" style="flex:1 1 160px"><label>Depart after</label><input name="depart_after_local" placeholder="now"></div>
+    <button type="submit" class="search-btn">&#128269; Search</button>
+  </form>
+  <label class="selfconn"><input name="include_self_connections" type="checkbox" checked form="search-form"> allow separate-ticket connections</label>
+  <p class="searched" id="searched"></p>
+
+  <section id="scenario" class="card" style="display:none">
+    <h2>What happened</h2>
+    <div id="scenario-body"></div>
   </section>
 
   <section id="results"></section>
   <section id="collapsed"></section>
-</main>
+</div>
 
 <footer>
   <p id="source-note"></p>

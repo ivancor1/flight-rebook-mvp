@@ -1,137 +1,95 @@
 # Rebook
 
-When an airline cancels your flight, its rebooking engine is working for the airline, not for you.
-It only searches its own metal, only out of the airport printed on your ticket, and it does not care
-that four of you are travelling together on three different record locators. That is how a 1:30pm
-SFO-JFK turns into a 4:25pm out of San Jose, a connection in Phoenix, and a 5:47am arrival.
+**Find the flight the airline won't offer you.**
 
-This app does the search the airline won't: every airport in both metro areas, every carrier in the
-data, seats confirmed for the whole party on every leg, ranked by when you actually get to your
-door - and it puts a dollar figure on the option the airline never mentions, which is taking the
-cash refund you are owed and buying a ticket on someone else.
+When an airline cancels your flight, its rebooking desk is working for the airline, not for you. It only searches its own metal, only out of the airport printed on your ticket, and it does not care that four of you are travelling together on three different record locators. That is how a 1:30pm SFO to JFK turns into a 4:25pm out of San Jose, a connection in Phoenix, and a 5:47am arrival.
+
+Rebook does the search the airline won't: every airport in both metro areas, every carrier in live inventory, seats confirmed for your whole party on every leg, ranked by when you actually get to your door. Then it puts a dollar figure on the option the airline never mentions: take the cash refund you are owed and buy a ticket on someone else.
+
+Paste the text message the airline sent you, and it fills in the rest.
+
+---
+
+## The bottom line
+
+Under the US DOT automatic refund rule (14 CFR Part 260), a cancelled flight usually means you are owed a **full cash refund**, in your original form of payment, if you decline the rebooking. Rebook does the arithmetic the airline will never draw for you:
+
+```
+new tickets for your whole party  -  the refund you're owed  =  net out of pocket
+```
+
+Very often the refund more than covers a better flight. For example: the airline rebooks a family of four onto a 5:47am red-eye connecting through Phoenix. Rebook finds a nonstop that lands the night before, and shows that the refund covers the new tickets with money left over. Same destination, hours earlier, and it costs you nothing extra. That is the flight the airline had no reason to show you.
+
+---
+
+## What it does that a booking site does not
+
+1. **Both ends are metro areas, not airports.** SFO, SJC, and OAK are one origin. JFK, EWR, and LGA are one destination. Most of the win lives in the airport the airline will never offer.
+2. **Party size is a hard filter on every leg.** Airlines sell seats in fare buckets. A flight can look available to a solo searcher and vanish the instant you ask for four on one booking. Rebook searches at your real party size, and it surfaces the flights that "died on party size" so you know exactly why an option collapsed.
+3. **Ranked by when you land, door to door.** Ground time to the airport, time at the airport, flight and layover, ground time from the arrival airport. A flight that leaves three hours later but lands two hours earlier is a better flight, and Rebook ranks it that way.
+4. **The refund is part of every comparison** (see the bottom line above).
+5. **Live, real, bookable inventory** across the carriers the provider covers, priced for your actual passengers.
+6. **Paste and go.** Paste the airline's cancellation message and a language model pulls out your flight, party size, fare, and the rebooking they offered. The search then runs on your real numbers, no forms to fill.
+
+---
+
+## The hard part, and the moat
+
+Party-size-accurate availability is the whole product. A search that cannot tell you whether four seats are actually sellable together is the search that already failed this traveller once.
+
+Rebook gets it two ways: it queries live inventory at your true party size (which fails closed, so an offer existing is the guarantee that the seats are there), and it runs a second single-passenger search to catch the flights that look bookable right up until you ask for the group. That diff is the difference between arguing with a gate agent and knowing your options cold.
+
+---
 
 ## Run it
 
-Python 3.9+. Standard library only - no pip install, no node_modules, no API keys, no network.
+Python 3.9+, standard library only. No pip install, no build step.
 
 ```bash
-git clone <your repo url>
+git clone https://github.com/ivancor1/flight-rebook-mvp
 cd flight-rebook-mvp
-python3 app.py
-# open http://localhost:8000
+python3 app.py            # then open http://localhost:8000
 ```
 
-Options: `python3 app.py --port 8080`. Tests: `python3 -m unittest -v`.
+Out of the box it runs on a seeded fixture dataset: offline, deterministic, no keys. To make it real, drop in your own credentials (both files are git-ignored and never leave your machine):
 
-## What it does
+- **Live flights:** put a Duffel access token in `duffel_token.txt`. Free self-serve signup at duffel.com. Searching is free; you only pay if you book, which this app does not do.
+- **Paste-to-parse:** put an OpenAI API key in `openai_key.txt`. Uses `gpt-5.4-nano`, a fraction of a cent per parse.
 
-The six things that actually matter, each implemented and each testable:
+The keys stay server-side. Your browser only ever talks to your own local server.
 
-1. **Both ends are metro areas, not airports.** SJC, SFO and OAK are one origin; JFK, EWR and LGA
-   are one destination. Most of the win lives in the airport the airline will never offer you.
-   (`engine.expand`)
-2. **Connections have to actually connect.** Onward legs are built from the arrival time of the
-   first leg, with a minimum layover of 45 minutes on one carrier and 90 across two, and a 6-hour
-   ceiling. A leg that departs before you land is rejected instead of quietly shown.
-3. **Party size is a hard filter on every segment.** Not seat 1 - all of them. An itinerary that
-   has 6 seats on the first leg and 2 on the second does not exist for a party of 4. Those show up
-   in their own "died on party size" section, because knowing *why* an option collapsed is the
-   difference between arguing with an agent and moving on.
-4. **Separate PNRs are first-class.** The party is a list of passengers each with their own record
-   locator, so the app can show that the airline is free to rebook them independently - which is
-   exactly how groups get split across two days.
-5. **Ranked by arrival, not departure.** Every option carries a door-to-door number: ground time to
-   the origin airport, 60 minutes at the airport, flight and layover time, then ground time from the
-   arrival airport. A flight that leaves 3 hours later and lands 2 hours earlier is a better flight.
-6. **The refund is part of the comparison.** See below.
+Tests: `python3 -m unittest` (10 tests over the search and refund logic).
 
-## The refund math
+---
 
-Under the US DOT automatic refund rule, a cancelled flight means a passenger holding a nonrefundable
-ticket who declines the rebooking - and declines any voucher - is owed a full cash refund of the
-fare, taxes and ancillary fees, in the original form of payment.
+## How it is built
 
-> "A covered carrier that is the merchant of record must provide a full and prompt refund of the
-> airfare, including any taxes and ancillary fees ... to a consumer that holds a nonrefundable ticket
-> on a scheduled flight to, from, or within the United States for any cancelled flight ... where the
-> consumer chooses not to: (i) Fly on the significantly delayed or changed flight or accept rebooking
-> on an alternative flight; or (ii) Accept any voucher, credit, or other form of compensation"
-> - [14 CFR 260.6(a)(1)](https://www.law.cornell.edu/cfr/text/14/260.6)
+Deliberately dependency-free: a standard-library Python server, a vanilla single-page front end, and real airline logos pulled from the live feed.
 
-"Prompt" is defined in [14 CFR 260.2](https://www.law.cornell.edu/cfr/text/14/260.2) as 7 business
-days for credit-card purchases and 20 calendar days for other payment methods. The same section
-defines a "significantly delayed or changed flight": 3+ hours domestic (6+ international) on either
-end, a different origin or destination airport, or added connection points - which is why the
-Phoenix redeye in the demo scenario trips three separate triggers at once.
+| File | What it does |
+| --- | --- |
+| `engine.py` | Metro expansion, connection building, per-leg party-size filter, door-to-door ranking |
+| `sources.py` | The `FlightSource` seam. `FixtureSource` (offline) and `DuffelSource` (live, with the party-of-1 diff) |
+| `entitlement.py` | US DOT refund entitlement and the refund-vs-rebook comparison, with citations inline |
+| `parse.py` | Language-model extraction of a disruption from free text (OpenAI, `gpt-5.4-nano`) |
+| `app.py` | Standard-library HTTP server and JSON API |
+| `index.html`, `style.css`, `app.js` | Single-page UI |
+| `models.py` | Airport, Segment, Option, Passenger, Disruption |
+| `test_engine.py` | Tests over the six strategies above |
 
-So every option gets the comparison the airline will never draw for you:
+Swapping the data source is one file: the engine never talks to an API, it asks a `FlightSource`.
 
-```
-new tickets (party)  -  refund you're owed  =  net out of pocket, against hours saved
-```
+---
 
-Sometimes the refund covers the replacement outright. `entitlement.py` holds all of this, with the
-citations inline. It is not legal advice, and it only covers flights to, from, or within the US.
+## Honest limits
 
-Caveats the code states out loud: weather cancellations are still refundable (what weather removes
-is hotel and meal coverage, which US carriers owe only for cancellations within their control),
-accepting the rebooking or a voucher gives up the refund, and the refund is what you paid - not what
-the replacement costs.
+- **Southwest** is not on any self-serve API and is not shown. The right answer is a deep-link handoff to southwest.com, not faked inventory.
+- **Coverage** is currently the SF Bay Area to New York corridor (that is the metro reference data). Extending it is a matter of adding metro definitions.
+- Rebook **finds and compares, it does not book.** It hands you to the airline to complete the purchase, which keeps it clear of ticket-agent and seller-of-travel obligations.
+- Availability shown is live purchase inventory: the best proxy for what the airline's own rebook tool would offer, not a read of your existing reservation, and not a guarantee.
 
-## The data problem
+---
 
-This is the honest part, and it is the real moat question for the product.
+## Legal
 
-**This MVP runs on a seeded fixture dataset** (`fixtures.json`): 20 real-looking segments for
-2026-07-28 out of the Bay Area to New York, modelled on an actual American cancellation. Times and
-flight numbers are plausible; **seat counts and fares are invented**. Nothing in here is live
-availability, and the app never claims otherwise - the source and its limits are printed in the
-footer of the UI and on the console at startup.
-
-Everything the engine needs comes through the `FlightSource` interface in `sources.py`, so a real
-feed is a drop-in replacement. What that costs:
-
-| Source | Gives you | Problem |
-| --- | --- | --- |
-| GDS / airline NDC (Amadeus, Sabre, Travelport) | True bookable inventory at a given party size | Commercial agreement, not self-serve |
-| Aggregator APIs (Duffel, Amadeus Self-Service, Kiwi) | Bookable offers, self-serve signup | Partial carrier coverage; seat counts often capped at "9" instead of the truth |
-| Schedule feeds (OAG, Cirium) | What flies where and when | Never tells you whether 4 seats exist |
-| Scraping airline sites | Everything | Fragile, and generally against terms of service |
-
-Party-size-accurate availability is the whole product. Search that can't tell you whether the leg
-has four seats is the thing that already failed this traveller once.
-
-`LiveSource` in `sources.py` is a deliberate `NotImplementedError` with those notes attached. There
-is no fake API key anywhere in this repo.
-
-## Layout
-
-```
-app.py           stdlib HTTP server + JSON API
-engine.py        metro expansion, connection building, party-size filter, ranking
-entitlement.py   DOT refund entitlement and the refund-vs-rebook comparison
-models.py        Airport, Segment, Option, Passenger, Disruption
-sources.py       FlightSource interface, FixtureSource, LiveSource stub
-fixtures.json    the seeded dataset and the demo cancellation
-index.html       single-page UI
-style.css
-app.js
-test_engine.py   10 tests over the six strategies above
-```
-
-API, if you want to drive it directly:
-
-```bash
-curl localhost:8000/api/scenario
-curl -X POST localhost:8000/api/search \
-  -d '{"origin":"SJC","destination":"NYC","party_size":4,"depart_after_local":"2026-07-28T11:00"}'
-```
-
-## What's next
-
-- Real inventory behind `FlightSource`, starting with one aggregator to prove the flow end to end.
-- Split-party handling: when no single itinerary fits everyone, find the best 2+2 rather than giving up.
-- Read the cancellation from the airline email or the PNR instead of a hand-entered scenario.
-- Ground truth for airport transfer times (traffic, transit) instead of the constants in `fixtures.json`.
-- Baggage and elite-status effects on whether the switch is actually worth it.
-- Carrier-specific refund request flows, since being owed a refund and getting one are different things.
+The refund logic follows [14 CFR 260.6](https://www.law.cornell.edu/cfr/text/14/260.6) (US DOT automatic refund rule), with the citations inline in `entitlement.py`. This is not legal advice. It applies to flights to, from, or within the United States.
