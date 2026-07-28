@@ -160,6 +160,11 @@ class Disruption:
     # "changed", or "" when the message never said. Empty means unknown - the
     # refund rules key off a real cancellation, so we never assume one.
     disruption_type: str = ""
+    # Connection points on the itinerary they actually bought: 0 for a nonstop,
+    # 1 for one stop, None when nobody told us. None means unknown, not zero -
+    # "the replacement adds a connection" is only true if we know what the
+    # original had.
+    original_connections: Optional[int] = None
 
     @property
     def is_cancellation(self) -> bool:

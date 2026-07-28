@@ -115,6 +115,7 @@ class FixtureSource(FlightSource):
             original_arrive_local=self.shift(d["original_arrive_local"]),
             cause=d["cause"],
             disruption_type=d.get("disruption_type", "cancelled"),
+            original_connections=d.get("original_connections"),
             itinerary_type=d["itinerary_type"],
             passengers=[Passenger(**p) for p in d["passengers"]],
             airline_offer=offer,

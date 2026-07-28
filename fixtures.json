@@ -56,6 +56,7 @@
     "original_arrive_local": "2026-07-28T22:05",
     "cause": "weather",
     "disruption_type": "cancelled",
+    "original_connections": 0,
     "itinerary_type": "domestic",
     "passengers": [
       {"name": "Passenger 1", "pnr": "KQ7T2R", "fare_paid": 384.0},

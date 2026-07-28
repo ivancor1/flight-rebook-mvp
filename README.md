@@ -58,7 +58,7 @@ Out of the box it runs on a seeded fixture dataset: offline, deterministic, no k
 
 The keys stay server-side. Your browser only ever talks to your own local server.
 
-Tests: `python3 -m unittest` (18 tests over the search, the fixture clock, and the refund logic).
+Tests: `python3 -m unittest` (21 tests over the search, the fixture clock, and the refund logic).
 
 ---
 

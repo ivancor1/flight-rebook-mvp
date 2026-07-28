@@ -38,11 +38,15 @@ def significant_change(disruption, offer, airports) -> dict:
     Per 14 CFR 260.2 a change is 'significant' if it moves departure or arrival
     by 3+ hours domestic (6+ international), changes the origin or destination
     airport, or adds connection points - among other triggers.
+
+    Anything we can't actually establish goes in "unknowns", not "reasons":
+    only a real trigger may turn "significant" on.
     """
     threshold = DOMESTIC_HOURS if disruption.itinerary_type == "domestic" else INTERNATIONAL_HOURS
-    reasons = []
+    reasons, unknowns = [], []
     if offer is None:
-        return {"significant": True, "reasons": ["No alternative was offered."], "threshold_hours": threshold}
+        return {"significant": True, "reasons": ["No alternative was offered."],
+                "unknowns": [], "threshold_hours": threshold}
 
     orig_arr = _safe_parse(disruption.original_arrive_local)
     new_arr = _safe_parse(offer.segments[-1].arrive_local)
@@ -62,10 +66,26 @@ def significant_change(disruption, offer, airports) -> dict:
         reasons.append(f"Different departure airport ({disruption.original_origin} -> {offer.origin}).")
     if offer.destination != disruption.original_destination:
         reasons.append(f"Different arrival airport ({disruption.original_destination} -> {offer.destination}).")
-    if len(offer.segments) - 1 > 0:
-        reasons.append(f"Adds {len(offer.segments) - 1} connection point(s) the original itinerary did not have.")
+    # "Adds connection points" is a comparison, not a count. A one-stop
+    # replacement adds nothing if the flight they lost was itself a one-stop -
+    # and if nobody told us what the original looked like, we don't know either
+    # way, so it can't be the thing that establishes a refund.
+    offer_connections = len(offer.segments) - 1
+    original_connections = disruption.original_connections
+    if offer_connections > 0:
+        if original_connections is None:
+            unknowns.append(
+                f"The replacement has {offer_connections} connection point(s); we were not told "
+                "how many the original itinerary had, so this on its own does not establish a "
+                "significant change."
+            )
+        elif offer_connections > original_connections:
+            added = offer_connections - original_connections
+            had = "a nonstop" if original_connections == 0 else f"{original_connections} connection point(s)"
+            reasons.append(f"Adds {added} connection point(s) - you booked {had}.")
 
-    return {"significant": bool(reasons), "reasons": reasons, "threshold_hours": threshold}
+    return {"significant": bool(reasons), "reasons": reasons,
+            "unknowns": unknowns, "threshold_hours": threshold}
 
 
 def _basis(disruption, cancelled, change) -> str:
@@ -92,12 +112,15 @@ def _basis(disruption, cancelled, change) -> str:
             "under 14 CFR 260.2 - then 14 CFR 260.6(a)(1) owes you the full fare, taxes and "
             "ancillary fees when you decline the rebooking and any voucher."
         )
+    unknown_note = ""
+    if change.get("unknowns"):
+        unknown_note = " " + " ".join(change["unknowns"])
     return (
         f"No automatic refund under 14 CFR 260.6 on what we know: this is a "
         f"{disruption.disruption_type} flight, not a cancellation, and the change to the "
         f"itinerary is under the {change['threshold_hours']}-hour threshold in 14 CFR 260.2, "
-        "with no different airport and no added connection. You can still ask the airline, "
-        "and a refundable fare is refundable regardless."
+        "with no different airport. You can still ask the airline, and a refundable fare is "
+        "refundable regardless." + unknown_note
     )
 
 
