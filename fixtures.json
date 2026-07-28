@@ -23,8 +23,7 @@
     "to_final_destination": {"JFK": 55, "EWR": 45, "LGA": 35}
   },
   "carriers": {
-    "AA": "American", "UA": "United", "DL": "Delta", "B6": "JetBlue",
-    "WN": "Southwest", "AS": "Alaska"
+    "AA": "American", "UA": "United", "DL": "Delta", "B6": "JetBlue", "AS": "Alaska"
   },
   "segments": [
     {"carrier": "AA", "number": "1642", "origin": "SJC", "destination": "PHX", "depart_local": "2026-07-28T16:25", "arrive_local": "2026-07-28T18:05", "seats_available": 9, "fare_per_person": 141.0, "aircraft": "A320"},
@@ -40,8 +39,6 @@
     {"carrier": "AS", "number": "620", "origin": "SFO", "destination": "JFK", "depart_local": "2026-07-28T16:00", "arrive_local": "2026-07-29T00:35", "seats_available": 7, "fare_per_person": 355.0, "aircraft": "B739"},
     {"carrier": "UA", "number": "2237", "origin": "SFO", "destination": "DEN", "depart_local": "2026-07-28T12:15", "arrive_local": "2026-07-28T15:50", "seats_available": 8, "fare_per_person": 168.0, "aircraft": "B739"},
     {"carrier": "UA", "number": "1466", "origin": "DEN", "destination": "JFK", "depart_local": "2026-07-28T16:55", "arrive_local": "2026-07-28T22:48", "seats_available": 5, "fare_per_person": 231.0, "aircraft": "B738"},
-    {"carrier": "WN", "number": "2211", "origin": "OAK", "destination": "LAS", "depart_local": "2026-07-28T11:45", "arrive_local": "2026-07-28T13:10", "seats_available": 12, "fare_per_person": 118.0, "aircraft": "B737"},
-    {"carrier": "WN", "number": "1855", "origin": "LAS", "destination": "LGA", "depart_local": "2026-07-28T14:35", "arrive_local": "2026-07-28T22:20", "seats_available": 8, "fare_per_person": 196.0, "aircraft": "B738"},
     {"carrier": "AS", "number": "1201", "origin": "SFO", "destination": "SEA", "depart_local": "2026-07-28T11:30", "arrive_local": "2026-07-28T13:40", "seats_available": 10, "fare_per_person": 99.0, "aircraft": "B739"},
     {"carrier": "B6", "number": "664", "origin": "SEA", "destination": "JFK", "depart_local": "2026-07-28T15:25", "arrive_local": "2026-07-28T23:52", "seats_available": 6, "fare_per_person": 189.0, "aircraft": "A321"},
     {"carrier": "UA", "number": "884", "origin": "SJC", "destination": "ORD", "depart_local": "2026-07-28T13:10", "arrive_local": "2026-07-28T19:20", "seats_available": 6, "fare_per_person": 205.0, "aircraft": "B739"},
