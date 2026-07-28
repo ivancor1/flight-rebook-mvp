@@ -19,23 +19,65 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURE_PATH = os.path.join(HERE, "fixtures.json")
 
 
+class ReferenceData:
+    """Airports, timezones, metro groupings, ground-transfer times, carrier names.
+
+    Config, not inventory: it describes the geography the search runs over and is
+    true whether the flights come from a fixture file or a live API. It lives in
+    the same JSON as the demo fixtures purely so this MVP ships as one file.
+    """
+
+    def __init__(self, path: str = FIXTURE_PATH):
+        with open(path) as fh:
+            self.raw = json.load(fh)
+
+    def airports(self) -> Dict[str, Airport]:
+        return {a["code"]: Airport(**a) for a in self.raw["airports"]}
+
+    def metros(self) -> Dict[str, dict]:
+        return self.raw["metros"]
+
+    def ground_minutes(self) -> dict:
+        return self.raw["ground_minutes"]
+
+    def carriers(self) -> Dict[str, str]:
+        return self.raw["carriers"]
+
+
 class FlightSource:
-    """Interface. Implement these four methods against a real feed."""
+    """Interface. Implement these four methods against a real feed.
+
+    Reference data comes from ReferenceData; a source only owns the flights.
+    A source may also offer `disruption()` - a canned scenario for the offline
+    demo. Live sources deliberately don't: there is no demo cancellation on real
+    inventory, and app.py treats its absence as "no demo scenario".
+    """
 
     name = "abstract"
     coverage_note = ""
+    uses_demo_clock = False
+
+    def __init__(self, reference: "ReferenceData" = None):
+        self.reference = reference or ReferenceData()
 
     def airports(self) -> Dict[str, Airport]:
-        raise NotImplementedError
+        return self.reference.airports()
 
     def metros(self) -> Dict[str, dict]:
-        raise NotImplementedError
+        return self.reference.metros()
+
+    def ground_minutes(self) -> dict:
+        return self.reference.ground_minutes()
+
+    def carriers(self) -> Dict[str, str]:
+        return self.reference.carriers()
+
+    def now_local(self) -> str:
+        """The clock the search runs on. Real time unless a source says otherwise."""
+        return datetime.now().strftime("%Y-%m-%dT%H:%M")
 
     def segments(self) -> List[Segment]:
         """Every marketed leg we can see, with per-leg bookable seat counts."""
-        raise NotImplementedError
-
-    def ground_minutes(self) -> dict:
         raise NotImplementedError
 
 
@@ -50,9 +92,9 @@ class FixtureSource(FlightSource):
     )
     uses_demo_clock = True   # the scenario clock, not the wall clock, drives the demo
 
-    def __init__(self, path: str = FIXTURE_PATH, today: date = None):
-        with open(path) as fh:
-            self.raw = json.load(fh)
+    def __init__(self, path: str = FIXTURE_PATH, today: date = None, reference: ReferenceData = None):
+        super().__init__(reference or ReferenceData(path))
+        self.raw = self.reference.raw
         self.scenario_now_local = self.raw.get("scenario_now_local", "2026-07-28T11:00")
         # The fixtures were written for one specific day. Shift every timestamp by
         # whole days so the scenario always lands on the day the app is run -
@@ -69,15 +111,6 @@ class FixtureSource(FlightSource):
     def now_local(self) -> str:
         """The moment the scenario is frozen at, on today's date."""
         return self.shift(self.scenario_now_local)
-
-    def airports(self):
-        return {a["code"]: Airport(**a) for a in self.raw["airports"]}
-
-    def metros(self):
-        return self.raw["metros"]
-
-    def carriers(self):
-        return self.raw["carriers"]
 
     def segments(self):
         names = self.raw["carriers"]
@@ -96,9 +129,6 @@ class FixtureSource(FlightSource):
             )
             for s in self.raw["segments"]
         ]
-
-    def ground_minutes(self):
-        return self.raw["ground_minutes"]
 
     # --- demo scenario -------------------------------------------
     def disruption(self) -> Disruption:
@@ -125,12 +155,14 @@ class FixtureSource(FlightSource):
 DUFFEL_URL = "https://api.duffel.com/air/offer_requests?return_offers=true"
 
 
-class DuffelSource(FixtureSource):
+class DuffelSource(FlightSource):
     """Live, real, bookable inventory from Duffel - the drop-in for FixtureSource.
 
-    Reference data (airports, timezones, metro groupings, ground-transfer times,
-    and the demo cancellation) is inherited from the fixtures: it's config, not
-    inventory. Only the flights themselves come from Duffel, live.
+    Reference data (airports, timezones, metro groupings, ground-transfer times)
+    comes from ReferenceData: it's config, not inventory. The flights come from
+    Duffel, live. What it deliberately does NOT carry is the demo cancellation -
+    that belongs to the fixture demo, and a live source pretending to have one
+    was how the fake scenario leaked into real inventory.
 
     How Duffel differs from a static feed, and how we bridge it:
       * It's a QUERY api. You ask for one route + date + the real passenger list
@@ -153,10 +185,16 @@ class DuffelSource(FixtureSource):
         "and is not shown here - book it directly at southwest.com. Fares in USD."
     )
 
-    def __init__(self, token: str, path: str = FIXTURE_PATH, cabin: str = "economy"):
-        super().__init__(path)
+    def __init__(self, token: str, path: str = FIXTURE_PATH, cabin: str = "economy",
+                 reference: ReferenceData = None):
+        super().__init__(reference or ReferenceData(path))
         self.token = token.strip()
         self.cabin = cabin
+
+    def segments(self) -> List[Segment]:
+        """Unused on a live source: the engine takes whole itineraries from
+        built_options() instead of recombining legs itself."""
+        return []
 
     # --- interface the engine uses for a live source --------------
     def built_options(self, origins, dests, party, depart_after_utc, airports) -> Dict[str, List[List[Segment]]]:
@@ -228,7 +266,7 @@ class DuffelSource(FixtureSource):
     # --- helpers --------------------------------------------------
     def _dest_targets(self, dests) -> List[str]:
         """One city code if the destination metro has one, else the airport list."""
-        for m in self.raw["metros"].values():
+        for m in self.reference.raw["metros"].values():
             if m.get("duffel_city") and set(dests) <= set(m["airports"]):
                 return [m["duffel_city"]]
         return list(dests)
