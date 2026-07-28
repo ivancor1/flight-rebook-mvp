@@ -54,11 +54,11 @@ python3 app.py            # then open http://localhost:8000
 Out of the box it runs on a seeded fixture dataset: offline, deterministic, no keys. The fixtures shift onto the day you run them, so the demo works whatever date you clone it, and the four sample cancellations ship with their parsed fields, so they run with no OpenAI key either. To make it real, drop in your own credentials (both files are git-ignored and never leave your machine):
 
 - **Live flights:** put a Duffel access token in `duffel_token.txt`. Free self-serve signup at duffel.com. Searching is free; you only pay if you book, which this app does not do.
-- **Paste-to-parse:** put an OpenAI API key in `openai_key.txt`. Uses `gpt-5.4-nano`, a fraction of a cent per parse.
+- **Paste-to-parse:** put an OpenAI API key in `openai_key.txt`. Uses `gpt-5.4-nano` (verified current on 2026-07-28: chat-completions, structured outputs, reasoning effort `low`), a fraction of a cent per parse. Set `OPENAI_MODEL` to use a different one.
 
 The keys stay server-side. Your browser only ever talks to your own local server.
 
-Tests: `python3 -m unittest` (26 tests over the search, the fixture clock, and the refund logic).
+Tests: `python3 -m unittest` (28 tests over the search, the fixture clock, and the refund logic).
 
 ---
 

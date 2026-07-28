@@ -1,6 +1,10 @@
 """Run: python3 -m unittest -v"""
+import io
+import json
 import threading
 import unittest
+import urllib.error
+from unittest import mock
 from datetime import date, datetime, timedelta
 
 import app as api
@@ -8,6 +12,7 @@ import app as api
 from sources import DuffelSource, FixtureSource, ReferenceData
 from engine import Engine
 from entitlement import refund_entitlement, compare, significant_change
+from parse import parse_disruption
 from models import Disruption, Option, Passenger, Segment
 
 SCENARIO_DAY = date(2026, 7, 28)          # the day the fixtures are written for
@@ -225,6 +230,45 @@ class TestEntitlement(unittest.TestCase):
         c = compare(r["options"][0], dis, offer, self.eng)
         self.assertEqual(c["net_out_of_pocket"], c["new_ticket_total"])
         self.assertNotIn("after the refund", c["verdict"])
+
+
+class TestParseCall(unittest.TestCase):
+    """The OpenAI call, without an OpenAI key."""
+
+    def _http_error(self, code, body):
+        return urllib.error.HTTPError("https://api.openai.com", code, "err", {}, io.BytesIO(body.encode()))
+
+    def _ok(self, fields):
+        payload = json.dumps({"choices": [{"message": {"content": json.dumps(fields)}}]}).encode()
+        resp = mock.MagicMock()
+        resp.read.return_value = payload
+        resp.__enter__.return_value = resp
+        return resp
+
+    def test_sends_the_documented_shape(self):
+        with mock.patch("parse.urllib.request.urlopen", return_value=self._ok({"party_size": 2})) as urlopen:
+            out = parse_disruption("AA16 was cancelled", "sk-test")
+        self.assertEqual(out, {"party_size": 2})
+        body = json.loads(urlopen.call_args[0][0].data)
+        self.assertEqual(body["model"], "gpt-5.4-nano")
+        self.assertEqual(body["reasoning_effort"], "low")
+        self.assertEqual(body["response_format"], {"type": "json_object"})
+
+    def test_retries_without_reasoning_effort_if_the_model_rejects_it(self):
+        responses = [self._http_error(400, "Unsupported parameter: 'reasoning_effort'"),
+                     self._ok({"party_size": 1})]
+
+        def fake(req, timeout=None):
+            r = responses.pop(0)
+            if isinstance(r, urllib.error.HTTPError):
+                raise r
+            fake.last = json.loads(req.data)
+            return r
+
+        with mock.patch("parse.urllib.request.urlopen", side_effect=fake):
+            out = parse_disruption("DL1290 was cancelled", "sk-test", model="some-other-model")
+        self.assertEqual(out, {"party_size": 1})
+        self.assertNotIn("reasoning_effort", fake.last)
 
 
 class TestSourceSeam(unittest.TestCase):
