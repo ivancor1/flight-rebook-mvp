@@ -97,6 +97,17 @@ def _disruption(disruption_type, fare=400.0, party=2, arrive="2026-07-28T22:05")
     )
 
 
+def _connecting_offer(depart, arrive, via="PHX", origin="SFO", destination="JFK"):
+    """A replacement itinerary with one connection point."""
+    first = Segment(carrier="AA", carrier_name="American", number="99",
+                    origin=origin, destination=via, depart_local=depart, arrive_local=depart,
+                    seats_available=9, fare_per_person=0.0)
+    second = Segment(carrier="AA", carrier_name="American", number="100",
+                     origin=via, destination=destination, depart_local=arrive, arrive_local=arrive,
+                     seats_available=9, fare_per_person=0.0)
+    return Option(segments=[first, second])
+
+
 def _offer(depart, arrive, origin="SFO", destination="JFK"):
     seg = Segment(carrier="AA", carrier_name="American", number="99",
                   origin=origin, destination=destination,
@@ -168,6 +179,36 @@ class TestEntitlement(unittest.TestCase):
         self.assertEqual(ent["refund_state"], "conditional")
         self.assertIsNone(ent["refund_amount"])
         self.assertAlmostEqual(ent["refund_if_cancelled"], 800.0)
+
+    # --- "adds a connection" is a comparison, not a count -----------------
+    def test_added_connection_needs_to_know_the_original(self):
+        """A one-stop replacement adds nothing if the flight they lost was itself
+        a one-stop - and if nobody said, we don't get to claim it either way."""
+        dis = _disruption("delayed")            # original_connections defaults to None
+        offer = _connecting_offer("2026-07-28T14:10", "2026-07-28T22:45")
+        sc = significant_change(dis, offer, self.eng.airports)
+        self.assertFalse(sc["significant"])
+        self.assertFalse(any("connection" in r for r in sc["reasons"]))
+        self.assertTrue(any("not told" in u for u in sc["unknowns"]))
+        ent = refund_entitlement(dis, offer, self.eng.airports)
+        self.assertFalse(ent["entitled"])
+        self.assertIsNone(ent["refund_amount"])
+
+    def test_added_connection_counts_when_the_original_was_a_nonstop(self):
+        dis = _disruption("delayed")
+        dis.original_connections = 0
+        sc = significant_change(dis, _connecting_offer("2026-07-28T14:10", "2026-07-28T22:45"),
+                                self.eng.airports)
+        self.assertTrue(sc["significant"])
+        self.assertTrue(any("nonstop" in r for r in sc["reasons"]))
+
+    def test_same_number_of_connections_is_not_a_trigger(self):
+        dis = _disruption("delayed")
+        dis.original_connections = 1            # they had booked a one-stop already
+        sc = significant_change(dis, _connecting_offer("2026-07-28T14:10", "2026-07-28T22:45"),
+                                self.eng.airports)
+        self.assertFalse(sc["significant"])
+        self.assertEqual(sc["unknowns"], [])
 
     def test_unknown_fare_is_unknown_not_zero(self):
         dis = _disruption("cancelled", fare=0.0)

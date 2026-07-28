@@ -128,6 +128,8 @@ def build_disruption(d):
         if dtype not in ("cancelled", "delayed", "changed"):
             dtype = ""  # never assume a cancellation we weren't told about
         total = d.get("total_paid")
+        conns = d.get("original_connections")
+        conns = int(conns) if isinstance(conns, (int, float)) and not isinstance(conns, bool) else None
         pnrs = d.get("pnrs") or []
         passengers = []
         for i in range(max(party, 1)):
@@ -143,6 +145,7 @@ def build_disruption(d):
             original_arrive_local=d.get("original_arrive_local") or "",
             cause=d.get("cause") or "",
             disruption_type=dtype,
+            original_connections=conns,
             itinerary_type="domestic",
             passengers=passengers,
             airline_offer=build_airline_offer(d.get("airline_rebooking"), d),
